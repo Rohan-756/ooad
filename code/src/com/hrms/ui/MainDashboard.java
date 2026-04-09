@@ -1,0 +1,866 @@
+package com.hrms.ui;
+
+import com.hrms.controller.EmployeeController;
+import com.hrms.exception.HRMSException;
+import com.hrms.model.Employee;
+import com.hrms.model.ExitInterview;
+
+import javax.swing.*;
+import javax.swing.border.*;
+import javax.swing.table.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * MainDashboard — Primary Swing UI for Employee Data Management & Exit Management.
+ *
+ * Features:
+ *  - Modern dark theme with glassmorphism-inspired cards
+ *  - Employee Form (Add / View / Update / Delete)
+ *  - Exit Interview Form
+ *  - Employee Table View with live filtering
+ *  - KPI summary cards
+ */
+public class MainDashboard extends JFrame {
+
+    // ── Color Palette ────────────────────────────────────────────────────────
+    private static final Color BG_DARK        = new Color(13, 17, 30);
+    private static final Color BG_CARD        = new Color(22, 27, 44);
+    private static final Color BG_CARD_HOVER  = new Color(30, 36, 58);
+    private static final Color ACCENT_BLUE    = new Color(99, 179, 237);
+    private static final Color ACCENT_PURPLE  = new Color(159, 122, 234);
+    private static final Color ACCENT_GREEN   = new Color(72, 199, 142);
+    private static final Color ACCENT_ORANGE  = new Color(246, 173, 85);
+    private static final Color ACCENT_RED     = new Color(252, 129, 116);
+    private static final Color TEXT_PRIMARY   = new Color(237, 242, 247);
+    private static final Color TEXT_SECONDARY = new Color(160, 174, 192);
+    private static final Color BORDER_COLOR   = new Color(45, 55, 72);
+    private static final Color INPUT_BG       = new Color(17, 24, 39);
+    private static final Color TABLE_ALT      = new Color(17, 22, 36);
+
+    // ── Font ─────────────────────────────────────────────────────────────────
+    private static final Font FONT_TITLE   = new Font("Segoe UI", Font.BOLD, 22);
+    private static final Font FONT_HEADING = new Font("Segoe UI", Font.BOLD, 16);
+    private static final Font FONT_BODY    = new Font("Segoe UI", Font.PLAIN, 13);
+    private static final Font FONT_SMALL   = new Font("Segoe UI", Font.PLAIN, 11);
+    private static final Font FONT_KPI     = new Font("Segoe UI", Font.BOLD, 32);
+
+    // ── Controller ───────────────────────────────────────────────────────────
+    private final EmployeeController controller;
+
+    // ── Table Model ──────────────────────────────────────────────────────────
+    private DefaultTableModel employeeTableModel;
+    private DefaultTableModel exitTableModel;
+    private JTable employeeTable;
+    private JTable exitTable;
+
+    // ── KPI Labels ───────────────────────────────────────────────────────────
+    private JLabel totalLabel, activeLabel, exitedLabel;
+
+    // ── Search ───────────────────────────────────────────────────────────────
+    private JTextField searchField;
+    private TableRowSorter<DefaultTableModel> rowSorter;
+
+    public MainDashboard() {
+        this.controller = new EmployeeController();
+        setupFrame();
+        buildUI();
+        refreshAll();
+        setVisible(true);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FRAME SETUP
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void setupFrame() {
+        setTitle("HRMS — Employee & Exit Management System");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(1280, 820);
+        setMinimumSize(new Dimension(1000, 680));
+        setLocationRelativeTo(null);
+        getContentPane().setBackground(BG_DARK);
+        setLayout(new BorderLayout());
+
+        // Shutdown hook to close DB connection gracefully
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                com.hrms.db.DBConnection.getInstance().closeConnection();
+            }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // BUILD UI
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void buildUI() {
+        add(buildTopBar(), BorderLayout.NORTH);
+
+        JTabbedPane tabs = buildTabbedPane();
+        JPanel centerWrapper = new JPanel(new BorderLayout());
+        centerWrapper.setBackground(BG_DARK);
+        centerWrapper.setBorder(new EmptyBorder(0, 16, 16, 16));
+        centerWrapper.add(tabs, BorderLayout.CENTER);
+        add(centerWrapper, BorderLayout.CENTER);
+    }
+
+    // ── Top Bar ───────────────────────────────────────────────────────────────
+
+    private JPanel buildTopBar() {
+        JPanel topBar = new JPanel(new BorderLayout());
+        topBar.setBackground(BG_CARD);
+        topBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_COLOR),
+                new EmptyBorder(16, 24, 16, 24)
+        ));
+
+        // Left: Title
+        JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+        titlePanel.setOpaque(false);
+        JLabel icon = new JLabel("⚙");
+        icon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 26));
+        icon.setForeground(ACCENT_BLUE);
+        JLabel title = new JLabel("HRMS Attrition Analysis");
+        title.setFont(FONT_TITLE);
+        title.setForeground(TEXT_PRIMARY);
+        JLabel subtitle = new JLabel("  |  Employee & Exit Management");
+        subtitle.setFont(FONT_BODY);
+        subtitle.setForeground(TEXT_SECONDARY);
+        titlePanel.add(icon);
+        titlePanel.add(title);
+        titlePanel.add(subtitle);
+
+        // Right: KPI Cards
+        JPanel kpiPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
+        kpiPanel.setOpaque(false);
+        kpiPanel.add(buildMiniKpi("Total", "0", ACCENT_BLUE, true));
+        kpiPanel.add(buildMiniKpi("Active", "0", ACCENT_GREEN, false));
+        kpiPanel.add(buildMiniKpi("Exited", "0", ACCENT_RED, false));
+
+        topBar.add(titlePanel, BorderLayout.WEST);
+        topBar.add(kpiPanel, BorderLayout.EAST);
+        return topBar;
+    }
+
+    private JPanel buildMiniKpi(String label, String value, Color accent, boolean isFirst) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(INPUT_BG);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(accent.darker(), 1),
+                new EmptyBorder(6, 16, 6, 16)
+        ));
+        card.setCursor(Cursor.getDefaultCursor());
+
+        JLabel valLabel = new JLabel(value);
+        valLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
+        valLabel.setForeground(accent);
+        valLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel lbl = new JLabel(label);
+        lbl.setFont(FONT_SMALL);
+        lbl.setForeground(TEXT_SECONDARY);
+        lbl.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        card.add(valLabel);
+        card.add(lbl);
+
+        // Store reference
+        if (label.equals("Total")) totalLabel = valLabel;
+        else if (label.equals("Active")) activeLabel = valLabel;
+        else if (label.equals("Exited")) exitedLabel = valLabel;
+
+        return card;
+    }
+
+    // ── Tabbed Pane ───────────────────────────────────────────────────────────
+
+    private JTabbedPane buildTabbedPane() {
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setBackground(BG_DARK);
+        tabs.setForeground(TEXT_PRIMARY);
+        tabs.setFont(FONT_BODY);
+        tabs.setBorder(BorderFactory.createEmptyBorder());
+        UIManager.put("TabbedPane.selected", BG_CARD);
+        UIManager.put("TabbedPane.background", BG_DARK);
+
+        tabs.addTab("  📋  Employee Table  ", buildEmployeeTableTab());
+        tabs.addTab("  ➕  Add Employee  ", buildAddEmployeeTab());
+        tabs.addTab("  ✏️  Edit Employee  ", buildEditEmployeeTab());
+        tabs.addTab("  🚪  Exit Interview  ", buildExitInterviewTab());
+
+        // Style tabs
+        for (int i = 0; i < tabs.getTabCount(); i++) {
+            JLabel lbl = new JLabel(tabs.getTitleAt(i));
+            lbl.setFont(FONT_BODY);
+            lbl.setForeground(TEXT_PRIMARY);
+            lbl.setBorder(new EmptyBorder(4, 4, 4, 4));
+        }
+
+        return tabs;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TAB 1: Employee Table
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private JPanel buildEmployeeTableTab() {
+        JPanel panel = new JPanel(new BorderLayout(0, 12));
+        panel.setBackground(BG_DARK);
+        panel.setBorder(new EmptyBorder(16, 0, 0, 0));
+
+        // ── Search bar ──
+        JPanel searchBar = new JPanel(new BorderLayout(8, 0));
+        searchBar.setBackground(BG_DARK);
+        searchBar.setBorder(new EmptyBorder(0, 0, 8, 0));
+
+        searchField = styledTextField("🔍  Search by name, department, or status...");
+        JButton refreshBtn = styledButton("↺  Refresh", ACCENT_BLUE);
+        refreshBtn.addActionListener(e -> refreshAll());
+
+        searchBar.add(searchField, BorderLayout.CENTER);
+        searchBar.add(refreshBtn, BorderLayout.EAST);
+
+        // ── Employee Table ──
+        String[] empCols = {"ID", "Name", "Department", "Attendance %",
+                            "Years of Service", "Promotions", "Status"};
+        employeeTableModel = new DefaultTableModel(empCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+
+        employeeTable = styledTable(employeeTableModel);
+        rowSorter = new TableRowSorter<>(employeeTableModel);
+        employeeTable.setRowSorter(rowSorter);
+
+        searchField.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            private void filter() {
+                String text = searchField.getText().trim();
+                if (text.isEmpty()) { rowSorter.setRowFilter(null); return; }
+                rowSorter.setRowFilter(RowFilter.regexFilter("(?i)" + text));
+            }
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { filter(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { filter(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { filter(); }
+        });
+
+        JScrollPane scroll = styledScrollPane(employeeTable);
+
+        // ── Exit Interviews Table ──
+        JLabel exitTitle = sectionLabel("Exit Interviews");
+        String[] exitCols = {"Interview ID", "Employee ID", "Exit Reason", "Feedback", "Date"};
+        exitTableModel = new DefaultTableModel(exitCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        exitTable = styledTable(exitTableModel);
+        JScrollPane exitScroll = styledScrollPane(exitTable);
+        exitScroll.setPreferredSize(new Dimension(0, 180));
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, scroll, exitScroll);
+        splitPane.setResizeWeight(0.65);
+        splitPane.setDividerSize(6);
+        splitPane.setBackground(BG_DARK);
+        splitPane.setBorder(null);
+
+        panel.add(searchBar, BorderLayout.NORTH);
+        panel.add(splitPane, BorderLayout.CENTER);
+        return panel;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TAB 2: Add Employee
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private JScrollPane buildAddEmployeeTab() {
+        JPanel card = formCard("Add New Employee", ACCENT_GREEN);
+
+        JTextField nameField = styledTextField("e.g. Jane Doe");
+        JComboBox<String> deptCombo = styledCombo(new String[]{
+            "Engineering", "Sales", "Marketing", "HR", "Finance",
+            "Operations", "Legal", "Product", "Design", "Support"
+        });
+        JTextField attendanceField = styledTextField("0–100");
+        JTextField yearsField = styledTextField("e.g. 3");
+        JTextField promotionField = styledTextField("e.g. 1");
+        JComboBox<Employee.EmploymentStatus> statusCombo =
+                new JComboBox<>(Employee.EmploymentStatus.values());
+        styleComboBox(statusCombo);
+
+        JButton addBtn = styledButton("➕  Add Employee", ACCENT_GREEN);
+
+        addBtn.addActionListener(e -> {
+            try {
+                String name = nameField.getText().trim();
+                String dept = (String) deptCombo.getSelectedItem();
+                double att = Double.parseDouble(attendanceField.getText().trim());
+                int years = Integer.parseInt(yearsField.getText().trim());
+                int promo = Integer.parseInt(promotionField.getText().trim());
+                Employee.EmploymentStatus status =
+                        (Employee.EmploymentStatus) statusCombo.getSelectedItem();
+
+                int id = controller.handleAddEmployee(name, dept, att, years, promo, status);
+                showSuccess(card, "✅ Employee added successfully! ID assigned: " + id);
+                clearFields(nameField, attendanceField, yearsField, promotionField);
+                refreshAll();
+
+            } catch (NumberFormatException ex) {
+                showError(card, "❌ INVALID_INPUT: Please enter valid numbers for attendance, years, and promotions.");
+            } catch (HRMSException ex) {
+                showError(card, "❌ " + ex.getErrorCode() + ": " + ex.getMessage());
+            }
+        });
+
+        card.add(formRow("Full Name:", nameField));
+        card.add(Box.createVerticalStrut(10));
+        card.add(formRow("Department:", deptCombo));
+        card.add(Box.createVerticalStrut(10));
+        card.add(formRow("Attendance % :", attendanceField));
+        card.add(Box.createVerticalStrut(10));
+        card.add(formRow("Years of Service:", yearsField));
+        card.add(Box.createVerticalStrut(10));
+        card.add(formRow("Promotion Count:", promotionField));
+        card.add(Box.createVerticalStrut(10));
+        card.add(formRow("Status:", statusCombo));
+        card.add(Box.createVerticalStrut(20));
+        card.add(addBtn);
+
+        return centeredFormPanel(card);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TAB 3: Edit / View / Delete Employee
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private JPanel buildEditEmployeeTab() {
+        JPanel outer = new JPanel(new BorderLayout(16, 0));
+        outer.setBackground(BG_DARK);
+        outer.setBorder(new EmptyBorder(16, 0, 0, 0));
+
+        // Left: lookup panel
+        JPanel lookupCard = formCard("Lookup Employee", ACCENT_BLUE);
+        JTextField idField = styledTextField("Enter Employee ID");
+        JButton lookupBtn = styledButton("🔍  Lookup", ACCENT_BLUE);
+
+        // Right: edit form
+        JPanel editCard = formCard("Edit / Delete Employee", ACCENT_PURPLE);
+        JLabel idDisplay = new JLabel("—");
+        idDisplay.setForeground(ACCENT_BLUE);
+        idDisplay.setFont(FONT_HEADING);
+
+        JTextField nameField = styledTextField("");
+        JComboBox<String> deptCombo = styledCombo(new String[]{
+            "Engineering", "Sales", "Marketing", "HR", "Finance",
+            "Operations", "Legal", "Product", "Design", "Support"
+        });
+        JTextField attendanceField = styledTextField("");
+        JTextField yearsField = styledTextField("");
+        JTextField promotionField = styledTextField("");
+        JComboBox<Employee.EmploymentStatus> statusCombo =
+                new JComboBox<>(Employee.EmploymentStatus.values());
+        styleComboBox(statusCombo);
+
+        JButton updateBtn = styledButton("💾  Save Changes", ACCENT_PURPLE);
+        JButton deleteBtn = styledButton("🗑  Delete Employee", ACCENT_RED);
+
+        // Lookup action
+        lookupBtn.addActionListener(e -> {
+            try {
+                int empId = Integer.parseInt(idField.getText().trim());
+                Employee emp = controller.handleGetEmployee(empId);
+                idDisplay.setText("ID: " + emp.getEmployeeId());
+                nameField.setText(emp.getName());
+                deptCombo.setSelectedItem(emp.getDepartment());
+                attendanceField.setText(String.valueOf(emp.getAttendancePercentage()));
+                yearsField.setText(String.valueOf(emp.getYearsOfService()));
+                promotionField.setText(String.valueOf(emp.getPromotionCount()));
+                statusCombo.setSelectedItem(emp.getEmploymentStatus());
+                showSuccess(editCard, "✅ Employee found.");
+            } catch (NumberFormatException ex) {
+                showError(lookupCard, "❌ INVALID_INPUT: Please enter a valid numeric Employee ID.");
+            } catch (HRMSException ex) {
+                showError(lookupCard, "❌ " + ex.getErrorCode() + ": " + ex.getMessage());
+            }
+        });
+
+        // Update action
+        updateBtn.addActionListener(e -> {
+            try {
+                String idText = idDisplay.getText().replace("ID: ", "").trim();
+                if (idText.equals("—")) { showError(editCard, "❌ No employee loaded. Use Lookup first."); return; }
+                int empId = Integer.parseInt(idText);
+                double att = Double.parseDouble(attendanceField.getText().trim());
+                int years = Integer.parseInt(yearsField.getText().trim());
+                int promo = Integer.parseInt(promotionField.getText().trim());
+                controller.handleUpdateEmployee(empId, nameField.getText().trim(),
+                        (String) deptCombo.getSelectedItem(), att, years, promo,
+                        (Employee.EmploymentStatus) statusCombo.getSelectedItem());
+                showSuccess(editCard, "✅ Employee updated successfully.");
+                refreshAll();
+            } catch (NumberFormatException ex) {
+                showError(editCard, "❌ INVALID_INPUT: Ensure attendance, years, and promotions are valid numbers.");
+            } catch (HRMSException ex) {
+                showError(editCard, "❌ " + ex.getErrorCode() + ": " + ex.getMessage());
+            }
+        });
+
+        // Delete action
+        deleteBtn.addActionListener(e -> {
+            String idText = idDisplay.getText().replace("ID: ", "").trim();
+            if (idText.equals("—")) { showError(editCard, "❌ No employee loaded. Use Lookup first."); return; }
+            int empId = Integer.parseInt(idText);
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "Are you sure you want to permanently delete Employee ID " + empId + "?\nThis cannot be undone.",
+                    "Confirm Deletion", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (confirm == JOptionPane.YES_OPTION) {
+                try {
+                    controller.handleDeleteEmployee(empId);
+                    showSuccess(editCard, "✅ Employee deleted.");
+                    idDisplay.setText("—");
+                    clearFields(nameField, attendanceField, yearsField, promotionField);
+                    refreshAll();
+                } catch (HRMSException ex) {
+                    showError(editCard, "❌ " + ex.getErrorCode() + ": " + ex.getMessage());
+                }
+            }
+        });
+
+        lookupCard.add(formRow("Employee ID:", idField));
+        lookupCard.add(Box.createVerticalStrut(16));
+        lookupCard.add(lookupBtn);
+        lookupCard.add(Box.createVerticalGlue());
+
+        editCard.add(formRow("Employee:", idDisplay));
+        editCard.add(Box.createVerticalStrut(10));
+        editCard.add(formRow("Full Name:", nameField));
+        editCard.add(Box.createVerticalStrut(10));
+        editCard.add(formRow("Department:", deptCombo));
+        editCard.add(Box.createVerticalStrut(10));
+        editCard.add(formRow("Attendance %:", attendanceField));
+        editCard.add(Box.createVerticalStrut(10));
+        editCard.add(formRow("Years of Service:", yearsField));
+        editCard.add(Box.createVerticalStrut(10));
+        editCard.add(formRow("Promotion Count:", promotionField));
+        editCard.add(Box.createVerticalStrut(10));
+        editCard.add(formRow("Status:", statusCombo));
+        editCard.add(Box.createVerticalStrut(20));
+
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        btnRow.setOpaque(false);
+        btnRow.add(updateBtn);
+        btnRow.add(deleteBtn);
+        editCard.add(btnRow);
+
+        JPanel left = new JPanel(new BorderLayout());
+        left.setBackground(BG_DARK);
+        left.add(lookupCard, BorderLayout.NORTH);
+
+        outer.add(left, BorderLayout.WEST);
+        outer.add(editCard, BorderLayout.CENTER);
+        return outer;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TAB 4: Exit Interview
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private JScrollPane buildExitInterviewTab() {
+        JPanel card = formCard("Record Exit Interview", ACCENT_ORANGE);
+
+        JTextField empIdField = styledTextField("Employee ID");
+        JLabel empNameDisplay = new JLabel("— look up employee first —");
+        empNameDisplay.setForeground(TEXT_SECONDARY);
+        empNameDisplay.setFont(FONT_BODY);
+
+        JButton lookupBtn = styledButton("🔍  Verify Employee", ACCENT_BLUE);
+
+        String[] reasons = {
+            "Better Opportunity", "Relocation", "Personal Reasons",
+            "Work-Life Balance", "Compensation", "Management Issues",
+            "Career Growth", "Health Reasons", "Retirement", "Other"
+        };
+        JComboBox<String> reasonCombo = styledCombo(reasons);
+
+        JTextArea feedbackArea = new JTextArea(4, 30);
+        feedbackArea.setBackground(INPUT_BG);
+        feedbackArea.setForeground(TEXT_PRIMARY);
+        feedbackArea.setCaretColor(TEXT_PRIMARY);
+        feedbackArea.setFont(FONT_BODY);
+        feedbackArea.setBorder(new EmptyBorder(8, 10, 8, 10));
+        feedbackArea.setLineWrap(true);
+        feedbackArea.setWrapStyleWord(true);
+        JScrollPane feedbackScroll = styledScrollPane(feedbackArea);
+        feedbackScroll.setPreferredSize(new Dimension(0, 100));
+
+        JTextField dateField = styledTextField(LocalDate.now().toString());
+
+        JButton submitBtn = styledButton("✅  Submit Exit Interview", ACCENT_ORANGE);
+
+        lookupBtn.addActionListener(e -> {
+            try {
+                int empId = Integer.parseInt(empIdField.getText().trim());
+                Employee emp = controller.handleGetEmployee(empId);
+                empNameDisplay.setText(emp.getName() + " — " + emp.getDepartment()
+                        + " (" + emp.getEmploymentStatus() + ")");
+                empNameDisplay.setForeground(ACCENT_GREEN);
+            } catch (NumberFormatException ex) {
+                showError(card, "❌ INVALID_INPUT: Enter a valid numeric Employee ID.");
+            } catch (HRMSException ex) {
+                showError(card, "❌ " + ex.getErrorCode() + ": " + ex.getMessage());
+                empNameDisplay.setText("— employee not found —");
+                empNameDisplay.setForeground(ACCENT_RED);
+            }
+        });
+
+        submitBtn.addActionListener(e -> {
+            try {
+                int empId = Integer.parseInt(empIdField.getText().trim());
+                String reason = (String) reasonCombo.getSelectedItem();
+                String feedback = feedbackArea.getText().trim();
+                String date = dateField.getText().trim();
+                if (date.isEmpty()) date = LocalDate.now().toString();
+
+                int id = controller.handleSaveExitInterview(empId, reason, feedback, date);
+                showSuccess(card, "✅ Exit interview recorded. Interview ID: " + id
+                        + ". Employee marked as EXITED.");
+                empIdField.setText("");
+                feedbackArea.setText("");
+                empNameDisplay.setText("— look up employee first —");
+                empNameDisplay.setForeground(TEXT_SECONDARY);
+                refreshAll();
+
+            } catch (HRMSException.MissingFeedbackException ex) {
+                // WARNING — Ask user if they want to proceed without feedback
+                int choice = JOptionPane.showConfirmDialog(this,
+                        "⚠ WARNING: " + ex.getMessage() + "\n\nSubmit without feedback?",
+                        "Missing Feedback Warning",
+                        JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (choice == JOptionPane.YES_OPTION) {
+                    try {
+                        int empId = Integer.parseInt(empIdField.getText().trim());
+                        String reason = (String) reasonCombo.getSelectedItem();
+                        String date = dateField.getText().trim();
+                        if (date.isEmpty()) date = LocalDate.now().toString();
+                        int id = controller.handleSaveExitInterviewNoFeedback(empId, reason, date);
+                        showSuccess(card, "✅ Exit interview recorded (no feedback). ID: " + id);
+                        empIdField.setText("");
+                        feedbackArea.setText("");
+                        empNameDisplay.setText("— look up employee first —");
+                        empNameDisplay.setForeground(TEXT_SECONDARY);
+                        refreshAll();
+                    } catch (HRMSException ex2) {
+                        showError(card, "❌ " + ex2.getErrorCode() + ": " + ex2.getMessage());
+                    }
+                }
+            } catch (NumberFormatException ex) {
+                showError(card, "❌ INVALID_INPUT: Enter a valid numeric Employee ID.");
+            } catch (HRMSException ex) {
+                showError(card, "❌ " + ex.getErrorCode() + ": " + ex.getMessage());
+            }
+        });
+
+        // Build form
+        JPanel idRow = new JPanel(new BorderLayout(8, 0));
+        idRow.setOpaque(false);
+        idRow.add(empIdField, BorderLayout.CENTER);
+        idRow.add(lookupBtn, BorderLayout.EAST);
+
+        card.add(formRow("Employee ID:", idRow));
+        card.add(Box.createVerticalStrut(6));
+        card.add(empNameDisplay);
+        card.add(Box.createVerticalStrut(12));
+        card.add(formRow("Exit Reason:", reasonCombo));
+        card.add(Box.createVerticalStrut(10));
+
+        JLabel fbLabel = new JLabel("Feedback / Comments:");
+        fbLabel.setForeground(TEXT_SECONDARY);
+        fbLabel.setFont(FONT_BODY);
+        card.add(fbLabel);
+        card.add(Box.createVerticalStrut(6));
+        card.add(feedbackScroll);
+        card.add(Box.createVerticalStrut(10));
+        card.add(formRow("Interview Date:", dateField));
+        card.add(Box.createVerticalStrut(20));
+        card.add(submitBtn);
+
+        return centeredFormPanel(card);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DATA REFRESH
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private void refreshAll() {
+        SwingUtilities.invokeLater(() -> {
+            // Refresh employee table
+            employeeTableModel.setRowCount(0);
+            List<Employee> employees = controller.handleGetAllEmployees();
+            for (Employee emp : employees) {
+                employeeTableModel.addRow(new Object[]{
+                    emp.getEmployeeId(), emp.getName(), emp.getDepartment(),
+                    String.format("%.1f%%", emp.getAttendancePercentage()),
+                    emp.getYearsOfService(), emp.getPromotionCount(),
+                    emp.getEmploymentStatus().name()
+                });
+            }
+
+            // Refresh exit interviews table
+            exitTableModel.setRowCount(0);
+            List<ExitInterview> interviews = controller.handleGetAllExitInterviews();
+            for (ExitInterview ei : interviews) {
+                String fb = ei.getFeedback();
+                if (fb != null && fb.length() > 40) fb = fb.substring(0, 40) + "...";
+                exitTableModel.addRow(new Object[]{
+                    ei.getInterviewId(), ei.getEmployeeId(),
+                    ei.getExitReason(), fb != null ? fb : "(none)", ei.getInterviewDate()
+                });
+            }
+
+            // Update KPI
+            int total = controller.getTotalCount();
+            int active = controller.getActiveCount();
+            int exited = controller.getExitedCount();
+            totalLabel.setText(String.valueOf(total));
+            activeLabel.setText(String.valueOf(active));
+            exitedLabel.setText(String.valueOf(exited));
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // STYLE HELPERS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private JScrollPane centeredFormPanel(JPanel card) {
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBackground(BG_DARK);
+        wrapper.setBorder(new EmptyBorder(20, 60, 20, 60));
+        wrapper.add(card, BorderLayout.CENTER);
+
+        JScrollPane scroll = new JScrollPane(wrapper);
+        scroll.setBackground(BG_DARK);
+        scroll.getViewport().setBackground(BG_DARK);
+        scroll.setBorder(null);
+        scroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.getVerticalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
+            @Override protected void configureScrollBarColors() {
+                this.thumbColor = ACCENT_BLUE.darker();
+                this.trackColor = INPUT_BG;
+            }
+        });
+        return scroll;
+    }
+
+    private JPanel formCard(String title, Color accent) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(BG_CARD);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(accent.darker(), 1),
+                new EmptyBorder(24, 28, 28, 28)
+        ));
+        // No fixed preferred size — let BoxLayout size from content
+        card.setMaximumSize(new Dimension(600, Integer.MAX_VALUE));
+
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setFont(FONT_HEADING);
+        titleLabel.setForeground(accent);
+        titleLabel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_COLOR),
+                new EmptyBorder(0, 0, 12, 0)
+        ));
+        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        titleLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        card.add(titleLabel);
+        card.add(Box.createVerticalStrut(16));
+
+        return card;
+    }
+
+    private JTextField styledTextField(String placeholder) {
+        JTextField field = new JTextField(20) {
+            @Override protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (getText().isEmpty() && !isFocusOwner()) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setColor(new Color(100, 116, 139));
+                    g2.setFont(getFont().deriveFont(Font.ITALIC));
+                    g2.drawString(placeholder, 10, getHeight() / 2 + getFont().getSize() / 3);
+                    g2.dispose();
+                }
+            }
+        };
+        field.setBackground(INPUT_BG);
+        field.setForeground(TEXT_PRIMARY);
+        field.setCaretColor(ACCENT_BLUE);
+        field.setFont(FONT_BODY);
+        field.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER_COLOR, 1),
+                new EmptyBorder(8, 12, 8, 12)
+        ));
+        field.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        return field;
+    }
+
+    private JComboBox<String> styledCombo(String[] items) {
+        JComboBox<String> combo = new JComboBox<>(items);
+        styleComboBox(combo);
+        return combo;
+    }
+
+    private <T> void styleComboBox(JComboBox<T> combo) {
+        combo.setBackground(INPUT_BG);
+        combo.setForeground(TEXT_PRIMARY);
+        combo.setFont(FONT_BODY);
+        combo.setBorder(BorderFactory.createLineBorder(BORDER_COLOR, 1));
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        ((JLabel) combo.getRenderer()).setBackground(INPUT_BG);
+    }
+
+    private JButton styledButton(String text, Color accent) {
+        // We desaturate and darken the color to make it "blander"
+        Color blandColor = new Color(60, 70, 90); 
+        JButton btn = new JButton(text) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                if (getModel().isPressed()) {
+                    g2.setColor(blandColor.darker());
+                } else if (getModel().isRollover()) {
+                    g2.setColor(blandColor.brighter());
+                } else {
+                    g2.setColor(blandColor);
+                }
+                // Simpler: Square edges instead of rounded
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                
+                g2.setColor(Color.WHITE);
+                g2.setFont(getFont());
+                FontMetrics fm = g2.getFontMetrics();
+                int x = (getWidth() - fm.stringWidth(getText())) / 2;
+                int y = (getHeight() + fm.getAscent() - fm.getDescent()) / 2;
+                g2.drawString(getText(), x, y);
+                g2.dispose();
+            }
+        };
+        // Bigger: Larger font and dimensions
+        btn.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        btn.setForeground(Color.WHITE);
+        btn.setBackground(blandColor);
+        btn.setBorder(BorderFactory.createLineBorder(BORDER_COLOR, 1));
+        btn.setBorderPainted(true);
+        btn.setContentAreaFilled(false);
+        btn.setOpaque(true);
+        btn.setFocusPainted(false);
+        btn.setPreferredSize(new Dimension(280, 50));
+        btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        return btn;
+    }
+
+    private JTable styledTable(DefaultTableModel model) {
+        JTable table = new JTable(model) {
+            @Override public Component prepareRenderer(TableCellRenderer renderer, int row, int col) {
+                Component c = super.prepareRenderer(renderer, row, col);
+                if (isRowSelected(row)) {
+                    c.setBackground(ACCENT_BLUE.darker());
+                    c.setForeground(Color.WHITE);
+                } else {
+                    c.setBackground(row % 2 == 0 ? BG_CARD : TABLE_ALT);
+                    c.setForeground(TEXT_PRIMARY);
+
+                    // Highlight EXITED rows in the employee table
+                    if (model.getColumnCount() == 7 && col == 6) {
+                        String val = model.getValueAt(row, col) != null
+                                ? model.getValueAt(row, col).toString() : "";
+                        c.setForeground(val.equals("EXITED") ? ACCENT_RED : ACCENT_GREEN);
+                    }
+                }
+                return c;
+            }
+        };
+        table.setBackground(BG_CARD);
+        table.setForeground(TEXT_PRIMARY);
+        table.setFont(FONT_BODY);
+        table.setRowHeight(32);
+        table.setGridColor(BORDER_COLOR);
+        table.setShowGrid(true);
+        table.setSelectionBackground(ACCENT_BLUE.darker());
+        table.setSelectionForeground(Color.WHITE);
+        table.setIntercellSpacing(new Dimension(0, 1));
+        table.setFillsViewportHeight(true);
+
+        JTableHeader header = table.getTableHeader();
+        header.setBackground(INPUT_BG);
+        header.setForeground(ACCENT_BLUE);
+        header.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        header.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, ACCENT_BLUE));
+        header.setPreferredSize(new Dimension(0, 38));
+
+        return table;
+    }
+
+    private JScrollPane styledScrollPane(Component comp) {
+        JScrollPane pane = new JScrollPane(comp);
+        pane.setBackground(BG_DARK);
+        pane.getViewport().setBackground(BG_CARD);
+        pane.setBorder(BorderFactory.createLineBorder(BORDER_COLOR, 1));
+        pane.getVerticalScrollBar().setUI(new javax.swing.plaf.basic.BasicScrollBarUI() {
+            @Override protected void configureScrollBarColors() {
+                this.thumbColor = ACCENT_BLUE.darker();
+                this.trackColor = INPUT_BG;
+            }
+        });
+        return pane;
+    }
+
+    private JLabel sectionLabel(String text) {
+        JLabel lbl = new JLabel(text);
+        lbl.setFont(FONT_HEADING);
+        lbl.setForeground(ACCENT_ORANGE);
+        lbl.setBorder(new EmptyBorder(8, 0, 4, 0));
+        return lbl;
+    }
+
+    private JPanel formRow(String label, Component field) {
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 46));
+
+        JLabel lbl = new JLabel(label);
+        lbl.setForeground(TEXT_SECONDARY);
+        lbl.setFont(FONT_BODY);
+        lbl.setPreferredSize(new Dimension(140, 36));
+        row.add(lbl, BorderLayout.WEST);
+        row.add(field, BorderLayout.CENTER);
+        return row;
+    }
+
+    private void showError(JPanel card, String msg) {
+        JOptionPane.showMessageDialog(this, msg, "Error", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private void showSuccess(JPanel card, String msg) {
+        JOptionPane.showMessageDialog(this, msg, "Success", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void clearFields(JTextField... fields) {
+        for (JTextField f : fields) f.setText("");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MAIN ENTRY POINT
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static void main(String[] args) {
+        try {
+            UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+        } catch (Exception ignored) {}
+
+        // Global UI customizations
+        UIManager.put("OptionPane.background", new Color(22, 27, 44));
+        UIManager.put("Panel.background", new Color(22, 27, 44));
+        UIManager.put("OptionPane.messageForeground", new Color(237, 242, 247));
+
+        SwingUtilities.invokeLater(MainDashboard::new);
+    }
+}
