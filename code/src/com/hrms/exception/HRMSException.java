@@ -82,4 +82,49 @@ public class HRMSException extends RuntimeException {
             super(ErrorCode.MISSING_DATA, message, Severity.MAJOR);
         }
     }
+
+    /**
+     * MAJOR - Division by zero attempted during attrition calculation (zero employees).
+     */
+    public static class DivideByZeroException extends HRMSException {
+        public DivideByZeroException(String message) {
+            super(ErrorCode.DIVIDE_BY_ZERO, message, Severity.MAJOR);
+        }
+    }
+
+    /**
+     * WARNING - The supplied date range is invalid (e.g. end before start, or null dates).
+     */
+    public static class InvalidDateRangeException extends HRMSException {
+        public InvalidDateRangeException(String message) {
+            super(ErrorCode.INVALID_DATE_RANGE, message, Severity.WARNING);
+        }
+    }
+
+    /**
+     * MINOR - A filter specification supplied by the UI is invalid.
+     */
+    public static class InvalidFilterException extends HRMSException {
+        public InvalidFilterException(String message) {
+            super(ErrorCode.INVALID_FILTER, message, Severity.MINOR);
+        }
+    }
+
+    /**
+     * WARNING - Not enough data points to perform the requested analysis.
+     */
+    public static class InsufficientDataException extends HRMSException {
+        public InsufficientDataException(String message) {
+            super(ErrorCode.INSUFFICIENT_DATA, message, Severity.WARNING);
+        }
+    }
+
+    /**
+     * WARNING - The requested data is not available in the system.
+     */
+    public static class DataNotAvailableException extends HRMSException {
+        public DataNotAvailableException(String message) {
+            super(ErrorCode.DATA_NOT_AVAILABLE, message, Severity.WARNING);
+        }
+    }
 }

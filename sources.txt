@@ -1,0 +1,14 @@
+code/src/com/hrms/controller/AttritionController.java
+code/src/com/hrms/controller/EmployeeController.java
+code/src/com/hrms/db/DBConnection.java
+code/src/com/hrms/exception/HRMSException.java
+code/src/com/hrms/model/AttritionRecord.java
+code/src/com/hrms/model/Employee.java
+code/src/com/hrms/model/ExitInterview.java
+code/src/com/hrms/model/PeriodType.java
+code/src/com/hrms/service/AttritionService.java
+code/src/com/hrms/service/EmployeeService.java
+code/src/com/hrms/service/ExitInterviewService.java
+code/src/com/hrms/service/IAttritionRate.java
+code/src/com/hrms/ui/MainDashboard.java
+app/MainApp.java
