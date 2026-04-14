@@ -2,10 +2,13 @@ package com.hrms.ui;
 
 import com.hrms.controller.AttritionController;
 import com.hrms.controller.EmployeeController;
+import com.hrms.controller.RiskController;
 import com.hrms.exception.HRMSException;
 import com.hrms.model.AttritionRecord;
 import com.hrms.model.Employee;
 import com.hrms.model.ExitInterview;
+import com.hrms.model.RiskAssessment;
+import com.hrms.model.RiskLevel;
 
 import javax.swing.*;
 import javax.swing.border.*;
@@ -50,8 +53,9 @@ public class MainDashboard extends JFrame {
     private static final Font FONT_KPI     = new Font("Segoe UI", Font.BOLD, 32);
 
     // ── Controllers ──────────────────────────────────────────────────────────
-    private final EmployeeController controller;
+    private final EmployeeController  controller;
     private final AttritionController attritionController;
+    private final RiskController      riskController;
 
     // ── Table Model ──────────────────────────────────────────────────────────
     private DefaultTableModel employeeTableModel;
@@ -67,8 +71,9 @@ public class MainDashboard extends JFrame {
     private TableRowSorter<DefaultTableModel> rowSorter;
 
     public MainDashboard() {
-        this.controller = new EmployeeController();
-        this.attritionController = new AttritionController();
+        this.controller           = new EmployeeController();
+        this.attritionController  = new AttritionController();
+        this.riskController       = new RiskController();
         setupFrame();
         buildUI();
         refreshAll();
@@ -197,6 +202,7 @@ public class MainDashboard extends JFrame {
         tabs.addTab("  ✏️  Edit Employee  ", buildEditEmployeeTab());
         tabs.addTab("  🚪  Exit Interview  ", buildExitInterviewTab());
         tabs.addTab("  📈  Attrition Analysis  ", buildAttritionTab());
+        tabs.addTab("  ⚠️  Risk Evaluation  ", buildRiskTab());
 
         // Style tabs
         for (int i = 0; i < tabs.getTabCount(); i++) {
@@ -1151,6 +1157,227 @@ public class MainDashboard extends JFrame {
 
             g2.dispose();
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TAB 6: Risk Evaluation
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private JPanel buildRiskTab() {
+        JPanel root = new JPanel(new BorderLayout(0, 12));
+        root.setBackground(BG_DARK);
+        root.setBorder(new EmptyBorder(16, 0, 0, 0));
+
+        // ── Top action bar ──────────────────────────────────────────────────
+        JPanel topBar = new JPanel(new BorderLayout(12, 0));
+        topBar.setBackground(BG_CARD);
+        topBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_COLOR),
+                new EmptyBorder(14, 18, 14, 18)
+        ));
+
+        // Left: single-evaluate form
+        JPanel singlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        singlePanel.setOpaque(false);
+        JLabel singleLbl = new JLabel("Employee ID:");
+        singleLbl.setForeground(TEXT_SECONDARY);
+        singleLbl.setFont(FONT_BODY);
+        JTextField singleIdField = styledTextField("e.g. 3");
+        singleIdField.setPreferredSize(new Dimension(120, 34));
+        singleIdField.setMaximumSize(new Dimension(120, 34));
+        JButton evalOneBtn = styledButton("🔍  Evaluate Employee", ACCENT_BLUE);
+        evalOneBtn.setPreferredSize(new Dimension(220, 38));
+        singlePanel.add(singleLbl);
+        singlePanel.add(singleIdField);
+        singlePanel.add(evalOneBtn);
+
+        // Right: bulk + filter
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        rightPanel.setOpaque(false);
+        JButton evalAllBtn = styledButton("⚠️  Evaluate All Employees", ACCENT_ORANGE);
+        evalAllBtn.setPreferredSize(new Dimension(240, 38));
+
+        JLabel filterLbl = new JLabel("Filter:");
+        filterLbl.setForeground(TEXT_SECONDARY);
+        filterLbl.setFont(FONT_BODY);
+        JComboBox<String> filterCombo = styledCombo(
+                new String[]{"All", "HIGH", "MEDIUM", "LOW"});
+        filterCombo.setPreferredSize(new Dimension(120, 34));
+        filterCombo.setMaximumSize(new Dimension(120, 34));
+
+        rightPanel.add(filterLbl);
+        rightPanel.add(filterCombo);
+        rightPanel.add(evalAllBtn);
+
+        topBar.add(singlePanel, BorderLayout.WEST);
+        topBar.add(rightPanel,  BorderLayout.EAST);
+
+        // ── Results table ──────────────────────────────────────────────────
+        String[] cols = {"Assessment ID", "Employee ID", "Risk Level",
+                         "Attendance Score", "Absenteeism %", "Promotions", "Reason", "Evaluated At"};
+        DefaultTableModel riskModel = new DefaultTableModel(cols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+
+        // Custom renderer: color-code rows by risk level
+        JTable riskTable = new JTable(riskModel) {
+            @Override
+            public Component prepareRenderer(TableCellRenderer renderer, int row, int col) {
+                Component c = super.prepareRenderer(renderer, row, col);
+                if (isRowSelected(row)) {
+                    c.setBackground(ACCENT_BLUE.darker());
+                    c.setForeground(Color.WHITE);
+                } else {
+                    Object levelVal = riskModel.getValueAt(row, 2);
+                    String level = levelVal != null ? levelVal.toString() : "";
+                    switch (level) {
+                        case "HIGH":   c.setBackground(new Color(80, 20, 20));  c.setForeground(ACCENT_RED);    break;
+                        case "MEDIUM": c.setBackground(new Color(70, 45, 10));  c.setForeground(ACCENT_ORANGE); break;
+                        case "LOW":    c.setBackground(new Color(15, 50, 30));  c.setForeground(ACCENT_GREEN);  break;
+                        default:       c.setBackground(BG_CARD);                c.setForeground(TEXT_PRIMARY);  break;
+                    }
+                }
+                return c;
+            }
+        };
+        riskTable.setBackground(BG_CARD);
+        riskTable.setForeground(TEXT_PRIMARY);
+        riskTable.setFont(FONT_BODY);
+        riskTable.setRowHeight(30);
+        riskTable.setGridColor(BORDER_COLOR);
+        riskTable.setShowGrid(true);
+        riskTable.setFillsViewportHeight(true);
+        riskTable.setSelectionBackground(ACCENT_BLUE.darker());
+        riskTable.setSelectionForeground(Color.WHITE);
+        JTableHeader riskHeader = riskTable.getTableHeader();
+        riskHeader.setBackground(INPUT_BG);
+        riskHeader.setForeground(ACCENT_ORANGE);
+        riskHeader.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        riskHeader.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, ACCENT_ORANGE));
+        riskHeader.setPreferredSize(new Dimension(0, 38));
+        // Widen the Reason column
+        riskTable.getColumnModel().getColumn(6).setPreferredWidth(300);
+        riskTable.getColumnModel().getColumn(7).setPreferredWidth(180);
+
+        JScrollPane tableScroll = styledScrollPane(riskTable);
+
+        // ── Summary bar ──────────────────────────────────────────────────
+        JPanel summaryBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 24, 4));
+        summaryBar.setBackground(BG_DARK);
+        JLabel highCount   = kpiChip("HIGH",   "0", ACCENT_RED);
+        JLabel medCount    = kpiChip("MEDIUM", "0", ACCENT_ORANGE);
+        JLabel lowCount    = kpiChip("LOW",    "0", ACCENT_GREEN);
+        JLabel totalCount  = kpiChip("Total",  "0", ACCENT_BLUE);
+        summaryBar.add(totalCount);
+        summaryBar.add(highCount);
+        summaryBar.add(medCount);
+        summaryBar.add(lowCount);
+
+        // Helper to populate the table and update summary chips
+        Runnable populateTable = () -> {
+            riskModel.setRowCount(0);
+            String filterVal = (String) filterCombo.getSelectedItem();
+            List<RiskAssessment> results;
+            try {
+                if (filterVal == null || filterVal.equals("All")) {
+                    results = riskController.handleGetAll();
+                } else {
+                    results = riskController.handleGetFlagged(filterVal);
+                }
+            } catch (HRMSException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "❌ " + ex.getErrorCode() + ": " + ex.getMessage(),
+                        "Risk Query Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            long h = 0, m = 0, l = 0;
+            for (RiskAssessment ra : results) {
+                riskModel.addRow(new Object[]{
+                    ra.getRiskAssessmentId(),
+                    ra.getEmployeeId(),
+                    ra.getRiskLevel().name(),
+                    String.format("%.1f%%", ra.getPerformanceScore()),
+                    String.format("%.1f%%", ra.getAbsenteeismRate()),
+                    ra.getPromotionGap(),
+                    ra.getReason(),
+                    ra.getEvaluatedAt()
+                });
+                if (ra.getRiskLevel() == RiskLevel.HIGH)   h++;
+                else if (ra.getRiskLevel() == RiskLevel.MEDIUM) m++;
+                else l++;
+            }
+            // Update chips (only meaningful when showing All)
+            if (filterVal == null || filterVal.equals("All")) {
+                updateChip(highCount,  "HIGH",   h);
+                updateChip(medCount,   "MEDIUM", m);
+                updateChip(lowCount,   "LOW",    l);
+                updateChip(totalCount, "Total",  h + m + l);
+            } else {
+                updateChip(totalCount, "Total", results.size());
+            }
+        };
+
+        // ── Wire actions ─────────────────────────────────────────────────
+        evalOneBtn.addActionListener(e -> {
+            try {
+                int empId = Integer.parseInt(singleIdField.getText().trim());
+                RiskAssessment ra = riskController.handleEvaluateRisk(empId);
+                JOptionPane.showMessageDialog(this,
+                        String.format("✅ Employee %d evaluated.%nRisk Level: %s%nReason: %s",
+                                empId, ra.getRiskLevel(), ra.getReason()),
+                        "Risk Evaluated", JOptionPane.INFORMATION_MESSAGE);
+                populateTable.run();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "❌ INVALID_INPUT: Enter a valid numeric Employee ID.",
+                        "Invalid Input", JOptionPane.ERROR_MESSAGE);
+            } catch (HRMSException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "❌ " + ex.getErrorCode() + ": " + ex.getMessage(),
+                        ex.getErrorCode().toString(), JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        evalAllBtn.addActionListener(e -> {
+            try {
+                List<RiskAssessment> all = riskController.handleEvaluateAll();
+                populateTable.run();
+                JOptionPane.showMessageDialog(this,
+                        "✅ Bulk evaluation complete. " + all.size() + " employee(s) assessed.",
+                        "Evaluation Complete", JOptionPane.INFORMATION_MESSAGE);
+            } catch (HRMSException ex) {
+                JOptionPane.showMessageDialog(this,
+                        "❌ " + ex.getErrorCode() + ": " + ex.getMessage(),
+                        ex.getErrorCode().toString(), JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        filterCombo.addActionListener(e -> populateTable.run());
+
+        root.add(topBar,      BorderLayout.NORTH);
+        root.add(summaryBar,  BorderLayout.SOUTH);
+        root.add(tableScroll, BorderLayout.CENTER);
+        return root;
+    }
+
+    /** Small inline KPI chip label for the risk summary bar. */
+    private JLabel kpiChip(String level, String count, Color accent) {
+        JLabel lbl = new JLabel(level + ": " + count);
+        lbl.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lbl.setForeground(accent);
+        lbl.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(accent.darker(), 1),
+                new EmptyBorder(4, 12, 4, 12)
+        ));
+        return lbl;
+    }
+
+    private void updateChip(JLabel chip, String level, long count) {
+        // Extract and replace only the count part after the colon
+        String text = chip.getText();
+        int colon = text.indexOf(":");
+        chip.setText(text.substring(0, colon + 2) + count);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
