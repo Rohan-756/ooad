@@ -1,7 +1,9 @@
 package com.hrms.ui;
 
+import com.hrms.controller.AttritionController;
 import com.hrms.controller.EmployeeController;
 import com.hrms.exception.HRMSException;
+import com.hrms.model.AttritionRecord;
 import com.hrms.model.Employee;
 import com.hrms.model.ExitInterview;
 
@@ -47,8 +49,9 @@ public class MainDashboard extends JFrame {
     private static final Font FONT_SMALL   = new Font("Segoe UI", Font.PLAIN, 11);
     private static final Font FONT_KPI     = new Font("Segoe UI", Font.BOLD, 32);
 
-    // ── Controller ───────────────────────────────────────────────────────────
+    // ── Controllers ──────────────────────────────────────────────────────────
     private final EmployeeController controller;
+    private final AttritionController attritionController;
 
     // ── Table Model ──────────────────────────────────────────────────────────
     private DefaultTableModel employeeTableModel;
@@ -65,6 +68,7 @@ public class MainDashboard extends JFrame {
 
     public MainDashboard() {
         this.controller = new EmployeeController();
+        this.attritionController = new AttritionController();
         setupFrame();
         buildUI();
         refreshAll();
@@ -192,6 +196,7 @@ public class MainDashboard extends JFrame {
         tabs.addTab("  ➕  Add Employee  ", buildAddEmployeeTab());
         tabs.addTab("  ✏️  Edit Employee  ", buildEditEmployeeTab());
         tabs.addTab("  🚪  Exit Interview  ", buildExitInterviewTab());
+        tabs.addTab("  📈  Attrition Analysis  ", buildAttritionTab());
 
         // Style tabs
         for (int i = 0; i < tabs.getTabCount(); i++) {
@@ -845,6 +850,307 @@ public class MainDashboard extends JFrame {
 
     private void clearFields(JTextField... fields) {
         for (JTextField f : fields) f.setText("");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TAB 5: Attrition Analysis
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private JPanel buildAttritionTab() {
+        JPanel root = new JPanel(new BorderLayout(0, 12));
+        root.setBackground(BG_DARK);
+        root.setBorder(new EmptyBorder(16, 0, 0, 0));
+
+        // ── Top section: date range form + rate result ───────────────────────
+        JPanel topRow = new JPanel(new BorderLayout(16, 0));
+        topRow.setBackground(BG_DARK);
+
+        // --- Form card ---
+        JPanel formCard = attrCard("Date Range & Period", ACCENT_BLUE);
+
+        JTextField startField   = styledTextField("YYYY-MM-DD  e.g. 2024-01-01");
+        JTextField endField     = styledTextField("YYYY-MM-DD  e.g. 2024-12-31");
+        JComboBox<String> periodCombo = styledCombo(new String[]{"Monthly", "Quarterly", "Annual"});
+
+        JButton calcBtn  = styledButton("⚡  Calculate Rate",  ACCENT_BLUE);
+        JButton trendBtn = styledButton("📊  Generate Trend",  ACCENT_PURPLE);
+
+        formCard.add(formRow("Start Date:",   startField));
+        formCard.add(Box.createVerticalStrut(10));
+        formCard.add(formRow("End Date:",     endField));
+        formCard.add(Box.createVerticalStrut(10));
+        formCard.add(formRow("Period Type:",  periodCombo));
+        formCard.add(Box.createVerticalStrut(20));
+        JPanel btnRow0 = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        btnRow0.setOpaque(false);
+        btnRow0.add(calcBtn);
+        btnRow0.add(trendBtn);
+        formCard.add(btnRow0);
+
+        // --- Result card ---
+        JPanel resultCard = attrCard("Attrition Rate Result", ACCENT_GREEN);
+        JLabel rateValueLabel = new JLabel("—");
+        rateValueLabel.setFont(new Font("Segoe UI", Font.BOLD, 42));
+        rateValueLabel.setForeground(ACCENT_GREEN);
+        rateValueLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel rateDetailLabel = new JLabel("Select a date range and click \"Calculate Rate\"");
+        rateDetailLabel.setFont(FONT_BODY);
+        rateDetailLabel.setForeground(TEXT_SECONDARY);
+        rateDetailLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        resultCard.add(rateValueLabel);
+        resultCard.add(Box.createVerticalStrut(8));
+        resultCard.add(rateDetailLabel);
+        resultCard.add(Box.createVerticalGlue());
+
+        topRow.add(formCard,   BorderLayout.WEST);
+        topRow.add(resultCard, BorderLayout.CENTER);
+
+        // ── Trend table ─────────────────────────────────────────────────────
+        JPanel trendSection = new JPanel(new BorderLayout(0, 6));
+        trendSection.setBackground(BG_DARK);
+        JLabel trendTitle = sectionLabel("Trend Data");
+        trendTitle.setForeground(ACCENT_PURPLE);
+
+        String[] trendCols = {"Period Start", "Period End", "Total Employees", "Exits", "Attrition Rate %"};
+        DefaultTableModel trendModel = new DefaultTableModel(trendCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        JTable trendTable = styledTable(trendModel);
+        JScrollPane trendScroll = styledScrollPane(trendTable);
+        trendScroll.setPreferredSize(new Dimension(0, 160));
+
+        trendSection.add(trendTitle,  BorderLayout.NORTH);
+        trendSection.add(trendScroll, BorderLayout.CENTER);
+
+        // ── Chart panel ─────────────────────────────────────────────────────
+        JPanel chartSection = new JPanel(new BorderLayout(0, 6));
+        chartSection.setBackground(BG_DARK);
+        JLabel chartTitle = sectionLabel("Attrition Trend Chart");
+        chartTitle.setForeground(ACCENT_ORANGE);
+
+        AttritionChartPanel chartPanel = new AttritionChartPanel();
+        chartPanel.setPreferredSize(new Dimension(0, 220));
+        chartPanel.setMinimumSize(new Dimension(0, 200));
+
+        chartSection.add(chartTitle, BorderLayout.NORTH);
+        chartSection.add(chartPanel, BorderLayout.CENTER);
+
+        // ── Wire button actions ──────────────────────────────────────────────
+        calcBtn.addActionListener(e -> {
+            try {
+                LocalDate start = LocalDate.parse(startField.getText().trim());
+                LocalDate end   = LocalDate.parse(endField.getText().trim());
+                String period   = (String) periodCombo.getSelectedItem();
+
+                AttritionRecord record = attritionController.calculate(period, start, end);
+                rateValueLabel.setText(String.format("%.2f%%", record.getAttritionRate()));
+                rateValueLabel.setForeground(
+                    record.getAttritionRate() >= 15 ? ACCENT_RED :
+                    record.getAttritionRate() >= 8  ? ACCENT_ORANGE : ACCENT_GREEN);
+                rateDetailLabel.setText(
+                    record.getTotalEmployees() + " employees | " +
+                    record.getEmployeesLeft()  + " exits | " +
+                    start + " → " + end);
+
+            } catch (java.time.format.DateTimeParseException ex) {
+                JOptionPane.showMessageDialog(this,
+                    "❌ INVALID_DATE_RANGE: Use YYYY-MM-DD format for dates.",
+                    "Invalid Date", JOptionPane.ERROR_MESSAGE);
+            } catch (HRMSException ex) {
+                JOptionPane.showMessageDialog(this,
+                    "❌ " + ex.getErrorCode() + ": " + ex.getMessage(),
+                    ex.getErrorCode().toString(), JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        trendBtn.addActionListener(e -> {
+            try {
+                LocalDate start = LocalDate.parse(startField.getText().trim());
+                LocalDate end   = LocalDate.parse(endField.getText().trim());
+                String period   = (String) periodCombo.getSelectedItem();
+
+                java.util.List<AttritionRecord> records =
+                    attritionController.trend(period, start, end);
+
+                // Populate table
+                trendModel.setRowCount(0);
+                for (AttritionRecord r : records) {
+                    trendModel.addRow(new Object[]{
+                        r.getStartDate(), r.getEndDate(),
+                        r.getTotalEmployees(), r.getEmployeesLeft(),
+                        String.format("%.2f%%", r.getAttritionRate())
+                    });
+                }
+
+                // Refresh chart
+                chartPanel.setData(records);
+
+                if (records.isEmpty()) {
+                    JOptionPane.showMessageDialog(this,
+                        "No data found for the selected period.",
+                        "No Data", JOptionPane.INFORMATION_MESSAGE);
+                }
+
+            } catch (java.time.format.DateTimeParseException ex) {
+                JOptionPane.showMessageDialog(this,
+                    "❌ INVALID_DATE_RANGE: Use YYYY-MM-DD format for dates.",
+                    "Invalid Date", JOptionPane.ERROR_MESSAGE);
+            } catch (HRMSException ex) {
+                JOptionPane.showMessageDialog(this,
+                    "❌ " + ex.getErrorCode() + ": " + ex.getMessage(),
+                    ex.getErrorCode().toString(), JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        // ── Bottom split: table + chart ──────────────────────────────────────
+        JSplitPane bottomSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT, trendSection, chartSection);
+        bottomSplit.setResizeWeight(0.38);
+        bottomSplit.setDividerSize(6);
+        bottomSplit.setBackground(BG_DARK);
+        bottomSplit.setBorder(null);
+
+        root.add(topRow,      BorderLayout.NORTH);
+        root.add(bottomSplit, BorderLayout.CENTER);
+        return root;
+    }
+
+    /** Simple helper to build a card panel for the Attrition tab. */
+    private JPanel attrCard(String title, Color accent) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(BG_CARD);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(accent.darker(), 1),
+                new EmptyBorder(18, 22, 22, 22)
+        ));
+        card.setPreferredSize(new Dimension(370, 240));
+
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setFont(FONT_HEADING);
+        titleLabel.setForeground(accent);
+        titleLabel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_COLOR),
+                new EmptyBorder(0, 0, 10, 0)
+        ));
+        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        titleLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        card.add(titleLabel);
+        card.add(Box.createVerticalStrut(14));
+        return card;
+    }
+
+    /**
+     * Java2D line chart rendering attrition rate % per trend bucket.
+     * No external library required.
+     */
+    private class AttritionChartPanel extends JPanel {
+        private java.util.List<AttritionRecord> data = new java.util.ArrayList<>();
+
+        public AttritionChartPanel() {
+            setBackground(BG_CARD);
+            setBorder(BorderFactory.createLineBorder(BORDER_COLOR, 1));
+        }
+
+        public void setData(java.util.List<AttritionRecord> records) {
+            this.data = records;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth(), h = getHeight();
+            int padLeft = 60, padRight = 20, padTop = 20, padBottom = 40;
+            int chartW = w - padLeft - padRight;
+            int chartH = h - padTop - padBottom;
+
+            // Background grid
+            g2.setColor(BORDER_COLOR);
+            g2.setStroke(new BasicStroke(0.5f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL,
+                    0, new float[]{4, 4}, 0));
+            int gridLines = 5;
+            for (int i = 0; i <= gridLines; i++) {
+                int y = padTop + (chartH * i / gridLines);
+                g2.drawLine(padLeft, y, padLeft + chartW, y);
+                double pct = 25.0 - (25.0 * i / gridLines);
+                g2.setColor(TEXT_SECONDARY);
+                g2.setFont(FONT_SMALL);
+                g2.drawString(String.format("%.0f%%", pct), 4, y + 4);
+                g2.setColor(BORDER_COLOR);
+            }
+
+            if (data == null || data.isEmpty()) {
+                g2.setColor(TEXT_SECONDARY);
+                g2.setFont(FONT_BODY);
+                String msg = "Generate trend data to see the chart";
+                FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(msg, (w - fm.stringWidth(msg)) / 2, h / 2);
+                g2.dispose();
+                return;
+            }
+
+            // Find max rate for scaling (min 25%)
+            double maxRate = 25.0;
+            for (AttritionRecord r : data) maxRate = Math.max(maxRate, r.getAttritionRate());
+            maxRate = Math.ceil(maxRate / 5.0) * 5.0; // round up to nearest 5
+
+            // Plot points
+            int n = data.size();
+            int[] xs = new int[n];
+            int[] ys = new int[n];
+            for (int i = 0; i < n; i++) {
+                xs[i] = padLeft + (n == 1 ? chartW / 2 : chartW * i / (n - 1));
+                ys[i] = padTop  + chartH - (int)(chartH * data.get(i).getAttritionRate() / maxRate);
+            }
+
+            // Area fill under line
+            g2.setColor(new Color(ACCENT_PURPLE.getRed(), ACCENT_PURPLE.getGreen(),
+                    ACCENT_PURPLE.getBlue(), 40));
+            int[] fillX = new int[n + 2];
+            int[] fillY = new int[n + 2];
+            fillX[0] = xs[0]; fillY[0] = padTop + chartH;
+            System.arraycopy(xs, 0, fillX, 1, n);
+            System.arraycopy(ys, 0, fillY, 1, n);
+            fillX[n + 1] = xs[n - 1]; fillY[n + 1] = padTop + chartH;
+            g2.fillPolygon(fillX, fillY, n + 2);
+
+            // Line
+            g2.setColor(ACCENT_PURPLE);
+            g2.setStroke(new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            for (int i = 0; i < n - 1; i++) g2.drawLine(xs[i], ys[i], xs[i+1], ys[i+1]);
+
+            // Dots + labels
+            g2.setFont(FONT_SMALL);
+            for (int i = 0; i < n; i++) {
+                double rate = data.get(i).getAttritionRate();
+                Color dot = rate >= 15 ? ACCENT_RED : rate >= 8 ? ACCENT_ORANGE : ACCENT_GREEN;
+                g2.setColor(dot);
+                g2.fillOval(xs[i] - 5, ys[i] - 5, 10, 10);
+                g2.setColor(TEXT_PRIMARY);
+                String lbl = String.format("%.1f%%", rate);
+                FontMetrics fm2 = g2.getFontMetrics();
+                g2.drawString(lbl, xs[i] - fm2.stringWidth(lbl) / 2, ys[i] - 8);
+
+                // X-axis label (month/period start)
+                g2.setColor(TEXT_SECONDARY);
+                String xLbl = data.get(i).getStartDate().toString();
+                if (xLbl.length() > 7) xLbl = xLbl.substring(0, 7); // YYYY-MM
+                g2.drawString(xLbl, xs[i] - fm2.stringWidth(xLbl) / 2, h - padBottom + 14);
+            }
+
+            // Axes
+            g2.setColor(BORDER_COLOR);
+            g2.setStroke(new BasicStroke(1f));
+            g2.drawLine(padLeft, padTop, padLeft, padTop + chartH);
+            g2.drawLine(padLeft, padTop + chartH, padLeft + chartW, padTop + chartH);
+
+            g2.dispose();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

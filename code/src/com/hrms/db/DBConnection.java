@@ -19,6 +19,7 @@ public class DBConnection {
     private static final String DB_URL = "jdbc:sqlite:hrms_attrition.db";
     private static volatile DBConnection instance = null;
     private Connection connection;
+    private boolean dummyMode = false;
 
     /**
      * Private constructor — prevents external instantiation.
@@ -31,7 +32,10 @@ public class DBConnection {
             System.out.println("[DBConnection] Singleton instance created. Connected to: " + DB_URL);
             initializeSchema();
         } catch (ClassNotFoundException e) {
-            throw new RuntimeException("SQLite JDBC Driver not found. Add sqlite-jdbc.jar to classpath.", e);
+            // Fall back to dummy in-memory mode when JDBC driver is not available.
+            this.connection = null;
+            this.dummyMode = true;
+            System.err.println("[DBConnection] Warning: SQLite JDBC Driver not found. Running in dummy mode (no DB). Add sqlite-jdbc.jar to classpath for real DB access.");
         } catch (SQLException e) {
             throw new RuntimeException("Failed to establish database connection: " + e.getMessage(), e);
         }
@@ -57,6 +61,7 @@ public class DBConnection {
      */
     public Connection getConnection() {
         try {
+            if (dummyMode) return null;
             if (connection == null || connection.isClosed()) {
                 System.out.println("[DBConnection] Connection was closed. Reconnecting...");
                 connection = DriverManager.getConnection(DB_URL);
@@ -68,6 +73,13 @@ public class DBConnection {
     }
 
     /**
+     * Returns true when the connection could not be established and DB access is disabled.
+     */
+    public boolean isDummyMode() {
+        return dummyMode;
+    }
+
+    /**
      * Initializes all required database tables on first run.
      * Uses CREATE TABLE IF NOT EXISTS for idempotency.
      */
@@ -76,6 +88,8 @@ public class DBConnection {
                 CREATE TABLE IF NOT EXISTS employees (
                     employee_id     INTEGER PRIMARY KEY AUTOINCREMENT,
                     name            TEXT NOT NULL,
+                    hire_date       TEXT,
+                    termination_date TEXT,
                     department      TEXT NOT NULL,
                     attendance_pct  REAL NOT NULL DEFAULT 100.0,
                     years_of_service INTEGER NOT NULL DEFAULT 0,
