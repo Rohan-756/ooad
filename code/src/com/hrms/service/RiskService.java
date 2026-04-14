@@ -67,6 +67,9 @@ public class RiskService implements IRiskClassification {
         int generatedId = persist(assessment);
         assessment.setRiskAssessmentId(generatedId);
 
+        // Notify dashboard observers — Observer Pattern
+        DataEventBus.getInstance().notifyObservers("RiskService");
+
         System.out.printf("[RiskService] Employee %d evaluated → %s%n",
                 employeeId, assessment.getRiskLevel());
         return assessment;
@@ -98,6 +101,9 @@ public class RiskService implements IRiskClassification {
                         e.getEmployeeId() + ": " + ex.getMessage());
             }
         }
+        // Notify dashboard observers — Observer Pattern
+        DataEventBus.getInstance().notifyObservers("RiskService");
+
         return results;
     }
 

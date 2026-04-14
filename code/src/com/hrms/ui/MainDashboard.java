@@ -1,14 +1,11 @@
 package com.hrms.ui;
 
 import com.hrms.controller.AttritionController;
+import com.hrms.controller.DashboardController;
 import com.hrms.controller.EmployeeController;
 import com.hrms.controller.RiskController;
 import com.hrms.exception.HRMSException;
-import com.hrms.model.AttritionRecord;
-import com.hrms.model.Employee;
-import com.hrms.model.ExitInterview;
-import com.hrms.model.RiskAssessment;
-import com.hrms.model.RiskLevel;
+import com.hrms.model.*;
 
 import javax.swing.*;
 import javax.swing.border.*;
@@ -17,6 +14,7 @@ import java.awt.*;
 import java.awt.event.*;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 /**
  * MainDashboard — Primary Swing UI for Employee Data Management & Exit Management.
@@ -53,9 +51,10 @@ public class MainDashboard extends JFrame {
     private static final Font FONT_KPI     = new Font("Segoe UI", Font.BOLD, 32);
 
     // ── Controllers ──────────────────────────────────────────────────────────
-    private final EmployeeController  controller;
-    private final AttritionController attritionController;
-    private final RiskController      riskController;
+    private final EmployeeController   controller;
+    private final AttritionController  attritionController;
+    private final RiskController       riskController;
+    private final DashboardController  dashboardController;
 
     // ── Table Model ──────────────────────────────────────────────────────────
     private DefaultTableModel employeeTableModel;
@@ -74,6 +73,9 @@ public class MainDashboard extends JFrame {
         this.controller           = new EmployeeController();
         this.attritionController  = new AttritionController();
         this.riskController       = new RiskController();
+        this.dashboardController  = new DashboardController();
+        // Observer: register UI refresh callback so dashboard auto-updates
+        this.dashboardController.setRefreshCallback(this::refreshAll);
         setupFrame();
         buildUI();
         refreshAll();
@@ -203,6 +205,7 @@ public class MainDashboard extends JFrame {
         tabs.addTab("  🚪  Exit Interview  ", buildExitInterviewTab());
         tabs.addTab("  📈  Attrition Analysis  ", buildAttritionTab());
         tabs.addTab("  ⚠️  Risk Evaluation  ", buildRiskTab());
+        tabs.addTab("  📊  Analytics Dashboard  ", buildDashboardTab());
 
         // Style tabs
         for (int i = 0; i < tabs.getTabCount(); i++) {
@@ -1378,6 +1381,357 @@ public class MainDashboard extends JFrame {
         String text = chip.getText();
         int colon = text.indexOf(":");
         chip.setText(text.substring(0, colon + 2) + count);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TAB 7: Analytics Dashboard
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private JPanel buildDashboardTab() {
+        JPanel root = new JPanel(new BorderLayout(0, 0));
+        root.setBackground(BG_DARK);
+
+        // Mutable snapshot reference for the refresh lambda
+        final DashboardSnapshot[] snapRef = {null};
+
+        // ── KPI bar (NORTH) ─────────────────────────────────────────────────
+        JPanel kpiBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 10));
+        kpiBar.setBackground(BG_CARD);
+        kpiBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER_COLOR),
+                new EmptyBorder(4, 12, 4, 12)));
+
+        JLabel kpiTotal      = dashKpi("Total Employees", "—", ACCENT_BLUE);
+        JLabel kpiActive     = dashKpi("Active",          "—", ACCENT_GREEN);
+        JLabel kpiExits      = dashKpi("Exits",           "—", ACCENT_RED);
+        JLabel kpiHighRisk   = dashKpi("High Risk",       "—", ACCENT_ORANGE);
+        JLabel kpiAttrition  = dashKpi("Attrition Rate",  "—%", ACCENT_PURPLE);
+        kpiBar.add(makeKpiCard("Total Employees", kpiTotal,    ACCENT_BLUE));
+        kpiBar.add(makeKpiCard("Active",          kpiActive,   ACCENT_GREEN));
+        kpiBar.add(makeKpiCard("Exits",           kpiExits,    ACCENT_RED));
+        kpiBar.add(makeKpiCard("High Risk",       kpiHighRisk, ACCENT_ORANGE));
+        kpiBar.add(makeKpiCard("Attrition Rate",  kpiAttrition,ACCENT_PURPLE));
+
+        // ── Filter bar (below KPI) ───────────────────────────────────────────
+        JPanel filterBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 8));
+        filterBar.setBackground(BG_DARK);
+        filterBar.setBorder(new EmptyBorder(6, 4, 0, 4));
+
+        JLabel fDeptLbl = new JLabel("Department:");
+        fDeptLbl.setForeground(TEXT_SECONDARY); fDeptLbl.setFont(FONT_BODY);
+        JComboBox<String> deptFilter = styledCombo(new String[]{
+                "All Departments","Engineering","Sales","Marketing","HR",
+                "Finance","Operations","Legal","Product","Design","Support"});
+        deptFilter.setPreferredSize(new Dimension(160, 32));
+
+        JLabel fPeriodLbl = new JLabel("Period:");
+        fPeriodLbl.setForeground(TEXT_SECONDARY); fPeriodLbl.setFont(FONT_BODY);
+        JComboBox<String> periodFilter = styledCombo(new String[]{"Monthly","Quarterly","Annual"});
+        periodFilter.setPreferredSize(new Dimension(120, 32));
+
+        JLabel fStartLbl = new JLabel("From:");
+        fStartLbl.setForeground(TEXT_SECONDARY); fStartLbl.setFont(FONT_BODY);
+        JTextField dashStartField = styledTextField("YYYY-MM-DD");
+        dashStartField.setText(LocalDate.now().minusYears(1).withDayOfMonth(1).toString());
+        dashStartField.setPreferredSize(new Dimension(120, 32));
+
+        JLabel fEndLbl = new JLabel("To:");
+        fEndLbl.setForeground(TEXT_SECONDARY); fEndLbl.setFont(FONT_BODY);
+        JTextField dashEndField = styledTextField("YYYY-MM-DD");
+        dashEndField.setText(LocalDate.now().toString());
+        dashEndField.setPreferredSize(new Dimension(120, 32));
+
+        JButton refreshDashBtn = styledButton("🔄  Refresh Dashboard", ACCENT_BLUE);
+        refreshDashBtn.setPreferredSize(new Dimension(200, 34));
+
+        filterBar.add(fDeptLbl); filterBar.add(deptFilter);
+        filterBar.add(fPeriodLbl); filterBar.add(periodFilter);
+        filterBar.add(fStartLbl); filterBar.add(dashStartField);
+        filterBar.add(fEndLbl); filterBar.add(dashEndField);
+        filterBar.add(refreshDashBtn);
+
+        // ── Department bar chart (CENTER-LEFT) ─────────────────────────────
+        DeptAttritionChart deptChart = new DeptAttritionChart();
+        deptChart.setPreferredSize(new Dimension(460, 0));
+        deptChart.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(ACCENT_BLUE.darker()),
+                "  Department-wise Attrition %  ",
+                javax.swing.border.TitledBorder.LEFT,
+                javax.swing.border.TitledBorder.TOP,
+                FONT_BODY, ACCENT_BLUE));
+
+        // ── Right panel: Correlation + Root Causes ─────────────────────────
+        JPanel rightPanel = new JPanel(new BorderLayout(0, 10));
+        rightPanel.setBackground(BG_DARK);
+        rightPanel.setBorder(new EmptyBorder(0, 8, 0, 0));
+
+        // Correlation panel
+        JPanel corrPanel = new JPanel();
+        corrPanel.setLayout(new BoxLayout(corrPanel, BoxLayout.Y_AXIS));
+        corrPanel.setBackground(BG_CARD);
+        corrPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(ACCENT_PURPLE.darker()),
+                new EmptyBorder(14, 16, 14, 16)));
+
+        JLabel corrTitle = new JLabel("Correlation Analysis");
+        corrTitle.setFont(FONT_HEADING); corrTitle.setForeground(ACCENT_PURPLE);
+        corrTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
+        corrTitle.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0,0,1,0, BORDER_COLOR),
+                new EmptyBorder(0,0,8,0)));
+        corrTitle.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+
+        JLabel[] corrBars  = new JLabel[3];
+        JLabel[] corrVals  = new JLabel[3];
+        String[] corrNames = {"Attendance", "Promotion", "Tenure"};
+        Color[]  corrColors = {ACCENT_RED, ACCENT_ORANGE, ACCENT_BLUE};
+
+        corrPanel.add(corrTitle);
+        corrPanel.add(Box.createVerticalStrut(10));
+        for (int i = 0; i < 3; i++) {
+            JLabel name = new JLabel(corrNames[i]);
+            name.setFont(FONT_BODY); name.setForeground(TEXT_SECONDARY);
+            name.setAlignmentX(Component.LEFT_ALIGNMENT);
+            name.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+            corrVals[i] = new JLabel("—");
+            corrVals[i].setFont(new Font("Segoe UI", Font.BOLD, 13));
+            corrVals[i].setForeground(corrColors[i]);
+            corrVals[i].setAlignmentX(Component.RIGHT_ALIGNMENT);
+            corrBars[i] = new JLabel();
+            corrBars[i].setOpaque(true);
+            corrBars[i].setBackground(corrColors[i].darker());
+            corrBars[i].setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
+            corrBars[i].setPreferredSize(new Dimension(0, 8));
+            corrBars[i].setAlignmentX(Component.LEFT_ALIGNMENT);
+            JPanel row = new JPanel(new BorderLayout(6,0));
+            row.setOpaque(false);
+            row.add(name, BorderLayout.WEST); row.add(corrVals[i], BorderLayout.EAST);
+            row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+            row.setAlignmentX(Component.LEFT_ALIGNMENT);
+            corrPanel.add(row);
+            corrPanel.add(corrBars[i]);
+            corrPanel.add(Box.createVerticalStrut(8));
+        }
+
+        // Root causes table
+        JPanel causesPanel = new JPanel(new BorderLayout(0, 6));
+        causesPanel.setBackground(BG_DARK);
+        JLabel causesTitle = sectionLabel("🔍 Root Cause Findings");
+        causesTitle.setForeground(ACCENT_ORANGE);
+        String[] causesCols = {"#", "Cause", "Impact Score", "Description"};
+        DefaultTableModel causesModel = new DefaultTableModel(causesCols, 0) {
+            @Override public boolean isCellEditable(int r, int c) { return false; }
+        };
+        JTable causesTable = styledTable(causesModel);
+        causesTable.getColumnModel().getColumn(3).setPreferredWidth(300);
+        JScrollPane causesScroll = styledScrollPane(causesTable);
+        causesPanel.add(causesTitle,  BorderLayout.NORTH);
+        causesPanel.add(causesScroll, BorderLayout.CENTER);
+
+        rightPanel.add(corrPanel,   BorderLayout.NORTH);
+        rightPanel.add(causesPanel, BorderLayout.CENTER);
+
+        // ── Center: chart + filter stacked ─────────────────────────────────
+        JSplitPane centerSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
+                deptChart, rightPanel);
+        centerSplit.setResizeWeight(0.55);
+        centerSplit.setDividerSize(5);
+        centerSplit.setBackground(BG_DARK);
+        centerSplit.setBorder(null);
+
+        JPanel northStack = new JPanel(new BorderLayout());
+        northStack.setBackground(BG_DARK);
+        northStack.add(kpiBar,     BorderLayout.NORTH);
+        northStack.add(filterBar,  BorderLayout.SOUTH);
+
+        root.add(northStack,   BorderLayout.NORTH);
+        root.add(centerSplit,  BorderLayout.CENTER);
+
+        // ── Refresh logic ─────────────────────────────────────────────────
+        Runnable refreshDash = () -> {
+            try {
+                LocalDate start = LocalDate.parse(dashStartField.getText().trim());
+                LocalDate end   = LocalDate.parse(dashEndField.getText().trim());
+                String selDept  = (String) deptFilter.getSelectedItem();
+                String selPer   = (String) periodFilter.getSelectedItem();
+                PeriodType pt   = "Quarterly".equals(selPer) ? PeriodType.QUARTERLY
+                                : "Annual".equals(selPer) ? PeriodType.ANNUAL
+                                : PeriodType.MONTHLY;
+
+                DashboardFilter df = new DashboardFilter(
+                        start, end, pt,
+                        "All Departments".equals(selDept) ? null : selDept);
+
+                DashboardSnapshot snap = dashboardController.handleBuildDashboard(df);
+                snapRef[0] = snap;
+
+                // KPI
+                kpiTotal.setText(String.valueOf(snap.getTotalEmployees()));
+                kpiActive.setText(String.valueOf(snap.getActiveEmployees()));
+                kpiExits.setText(String.valueOf(snap.getTotalExits()));
+                kpiHighRisk.setText(String.valueOf(snap.getHighRiskCount()));
+                kpiAttrition.setText(String.format("%.1f%%", snap.getOverallAttritionRate()));
+                kpiAttrition.setForeground(
+                        snap.getOverallAttritionRate() >= 20 ? ACCENT_RED :
+                        snap.getOverallAttritionRate() >= 10 ? ACCENT_ORANGE : ACCENT_GREEN);
+
+                // Dept chart
+                if (snap.getDepartmentAttritionRates() != null) {
+                    deptChart.setData(snap.getDepartmentAttritionRates());
+                }
+
+                // Correlation bars
+                if (snap.getCorrelationReport() != null) {
+                    CorrelationReport cr = snap.getCorrelationReport();
+                    double[] vals = {
+                        cr.getAttendanceCorrelation(),
+                        cr.getPromotionCorrelation(),
+                        cr.getTenureCorrelation()
+                    };
+                    for (int i = 0; i < 3; i++) {
+                        corrVals[i].setText(String.format("%.3f", vals[i]));
+                        int barW = (int)(Math.abs(vals[i]) * 200);
+                        corrBars[i].setPreferredSize(new Dimension(barW, 8));
+                        corrBars[i].setMaximumSize(new Dimension(Integer.MAX_VALUE, 8));
+                    }
+                    corrPanel.revalidate(); corrPanel.repaint();
+                }
+
+                // Root causes
+                causesModel.setRowCount(0);
+                if (snap.getRootCauses() != null) {
+                    int idx = 1;
+                    for (RootCauseFinding f : snap.getRootCauses()) {
+                        causesModel.addRow(new Object[]{
+                            idx++,
+                            f.getCauseType(),
+                            String.format("%.1f/100", f.getImpactScore()),
+                            f.getDescription()
+                        });
+                    }
+                }
+
+            } catch (java.time.format.DateTimeParseException ex) {
+                JOptionPane.showMessageDialog(this,
+                    "❌ INVALID_DATE_RANGE: Use YYYY-MM-DD format.",
+                    "Date Error", JOptionPane.ERROR_MESSAGE);
+            } catch (HRMSException ex) {
+                JOptionPane.showMessageDialog(this,
+                    "❌ " + ex.getErrorCode() + ": " + ex.getMessage(),
+                    ex.getErrorCode().toString(), JOptionPane.ERROR_MESSAGE);
+            }
+        };
+
+        refreshDashBtn.addActionListener(e -> refreshDash.run());
+        periodFilter.addActionListener(e -> refreshDash.run());
+        deptFilter.addActionListener(e -> refreshDash.run());
+
+        return root;
+    }
+
+    // ── Dashboard KPI helpers ─────────────────────────────────────────────────
+
+    private JLabel dashKpi(String label, String init, Color accent) {
+        JLabel lbl = new JLabel(init);
+        lbl.setFont(new Font("Segoe UI", Font.BOLD, 26));
+        lbl.setForeground(accent);
+        return lbl;
+    }
+
+    private JPanel makeKpiCard(String label, JLabel valueLabel, Color accent) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(INPUT_BG);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(accent.darker(), 1),
+                new EmptyBorder(10, 20, 10, 20)));
+
+        valueLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        JLabel lbl = new JLabel(label);
+        lbl.setFont(FONT_SMALL); lbl.setForeground(TEXT_SECONDARY);
+        lbl.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        card.add(valueLabel);
+        card.add(lbl);
+        return card;
+    }
+
+    /**
+     * Java2D horizontal bar chart for per-department attrition rates.
+     * Drawn inside the Analytics Dashboard tab.
+     */
+    private class DeptAttritionChart extends JPanel {
+        private Map<String, double[]> data;
+
+        public DeptAttritionChart() {
+            setBackground(BG_CARD);
+        }
+
+        public void setData(Map<String, double[]> data) {
+            this.data = data;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            int w = getWidth(), h = getHeight();
+            int padLeft = 110, padRight = 60, padTop = 20, padBottom = 20;
+            int chartW = w - padLeft - padRight;
+
+            if (data == null || data.isEmpty()) {
+                g2.setColor(TEXT_SECONDARY); g2.setFont(FONT_BODY);
+                String msg = "Click \"Refresh Dashboard\" to load data";
+                FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(msg, (w - fm.stringWidth(msg)) / 2, h / 2);
+                g2.dispose(); return;
+            }
+
+            String[] depts = data.keySet().toArray(new String[0]);
+            int n = depts.length;
+            int barH  = Math.min(28, (h - padTop - padBottom - (n - 1) * 6) / Math.max(n, 1));
+            int gapY  = 6;
+            double maxRate = 100.0;
+
+            g2.setFont(FONT_SMALL);
+            FontMetrics fm = g2.getFontMetrics();
+
+            for (int i = 0; i < n; i++) {
+                String dept = depts[i];
+                double[] vals = data.get(dept);
+                double rate   = vals[2];
+                int y = padTop + i * (barH + gapY);
+
+                // Label
+                g2.setColor(TEXT_SECONDARY);
+                g2.drawString(dept, padLeft - fm.stringWidth(dept) - 6,
+                        y + barH / 2 + fm.getAscent() / 2 - 1);
+
+                // Background track
+                g2.setColor(BORDER_COLOR);
+                g2.fillRoundRect(padLeft, y, chartW, barH, 4, 4);
+
+                // Filled bar
+                Color barColor = rate >= 25 ? ACCENT_RED
+                               : rate >= 15 ? ACCENT_ORANGE
+                               : rate >= 8  ? new Color(230, 197, 71)
+                               : ACCENT_GREEN;
+                int fillW = (int)(chartW * rate / maxRate);
+                g2.setColor(barColor);
+                g2.fillRoundRect(padLeft, y, Math.max(fillW, 4), barH, 4, 4);
+
+                // Rate label
+                g2.setColor(TEXT_PRIMARY);
+                String rateTxt = String.format("%.1f%%", rate);
+                g2.drawString(rateTxt, padLeft + fillW + 4,
+                        y + barH / 2 + fm.getAscent() / 2 - 1);
+            }
+
+            g2.dispose();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

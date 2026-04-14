@@ -22,10 +22,12 @@ public class ExitInterviewService {
 
     private final Connection conn;
     private final EmployeeService employeeService;
+    private final boolean         dummyMode;
 
     public ExitInterviewService() {
-        this.conn = DBConnection.getInstance().getConnection();
+        this.conn            = DBConnection.getInstance().getConnection();
         this.employeeService = new EmployeeService();
+        this.dummyMode       = DBConnection.getInstance().isDummyMode();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -172,6 +174,14 @@ public class ExitInterviewService {
      * Retrieves all exit interviews from the database.
      */
     public List<ExitInterview> getAllInterviews() {
+        if (dummyMode) {
+            List<ExitInterview> list = new ArrayList<>();
+            list.add(new ExitInterview(1, 2, "BETTER_OPPORTUNITY", "Moving to a larger firm.", "2023-08-15"));
+            list.add(new ExitInterview(2, 4, "WORK_LIFE_BALANCE", "Commute was too long.", "2024-01-10"));
+            list.add(new ExitInterview(3, 7, "CAREER_GROWTH", "Felt stagnant in current role.", "2023-11-20"));
+            return list;
+        }
+
         List<ExitInterview> list = new ArrayList<>();
         String sql = "SELECT * FROM exit_interviews ORDER BY interview_id DESC";
         try (Statement stmt = conn.createStatement();
@@ -189,6 +199,8 @@ public class ExitInterviewService {
      * Returns the count of employees who have exited — used by AttritionService.
      */
     public int getExitedEmployeeCount() {
+        if (dummyMode) return 3;
+
         String sql = "SELECT COUNT(DISTINCT employee_id) FROM exit_interviews";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {

@@ -46,7 +46,12 @@ public class AttritionService implements IAttritionRate {
                     ". Cannot compute attrition rate.");
         double rate = (left / (double) total) * 100.0;
 
-        return new AttritionRecord(startDate, endDate, total, left, rate);
+        AttritionRecord result = new AttritionRecord(startDate, endDate, total, left, rate);
+
+        // Notify dashboard observers — Observer Pattern
+        DataEventBus.getInstance().notifyObservers("AttritionService");
+
+        return result;
     }
 
     @Override
@@ -108,6 +113,9 @@ public class AttritionService implements IAttritionRate {
                     break;
             }
         }
+
+        // Notify dashboard observers — Observer Pattern
+        DataEventBus.getInstance().notifyObservers("AttritionService");
 
         return trend;
     }

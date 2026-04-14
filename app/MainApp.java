@@ -1,24 +1,24 @@
-import com.hrms.controller.AttritionController;
-import com.hrms.exception.HRMSException;
-import com.hrms.model.AttritionRecord;
+package app;
 
-import java.time.LocalDate;
-import java.util.List;
+import com.hrms.ui.MainDashboard;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import java.awt.Color;
 
 /**
- * Small runner to demonstrate Attrition calculations.
+ * Main Entry Point for the HRMS Attrition Analysis System.
  */
 public class MainApp {
     public static void main(String[] args) {
-        AttritionController controller = new AttritionController();
-        LocalDate start = LocalDate.now().minusMonths(6).withDayOfMonth(1);
-        LocalDate end = LocalDate.now();
         try {
-            List<AttritionRecord> trend = controller.trend("monthly", start, end);
-            System.out.println("Attrition trend from " + start + " to " + end + ":");
-            for (AttritionRecord r : trend) System.out.println(r);
-        } catch (HRMSException e) {
-            System.err.println("Error computing attrition: " + e.getMessage());
-        }
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception ignored) {}
+
+        // Global UI customizations for a consistent dark theme look in dialogs
+        UIManager.put("OptionPane.background", new Color(22, 27, 44));
+        UIManager.put("Panel.background", new Color(22, 27, 44));
+        UIManager.put("OptionPane.messageForeground", new Color(237, 242, 247));
+
+        SwingUtilities.invokeLater(MainDashboard::new);
     }
 }

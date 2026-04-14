@@ -12,6 +12,8 @@ public class Employee {
 
     private int employeeId;
     private String name;
+    private String hireDate;
+    private String terminationDate;
     private String department;
     private double attendancePercentage;
     private int yearsOfService;
@@ -24,11 +26,13 @@ public class Employee {
     }
 
     // Parameterized constructor
-    public Employee(int employeeId, String name, String department,
-                    double attendancePercentage, int yearsOfService,
+    public Employee(int employeeId, String name, String hireDate, String terminationDate,
+                    String department, double attendancePercentage, int yearsOfService,
                     int promotionCount, EmploymentStatus employmentStatus) {
         this.employeeId = employeeId;
         this.name = name;
+        this.hireDate = hireDate;
+        this.terminationDate = terminationDate;
         this.department = department;
         this.attendancePercentage = attendancePercentage;
         this.yearsOfService = yearsOfService;
@@ -39,6 +43,8 @@ public class Employee {
     // Getters
     public int getEmployeeId() { return employeeId; }
     public String getName() { return name; }
+    public String getHireDate() { return hireDate; }
+    public String getTerminationDate() { return terminationDate; }
     public String getDepartment() { return department; }
     public double getAttendancePercentage() { return attendancePercentage; }
     public int getYearsOfService() { return yearsOfService; }
@@ -48,6 +54,8 @@ public class Employee {
     // Setters
     public void setEmployeeId(int employeeId) { this.employeeId = employeeId; }
     public void setName(String name) { this.name = name; }
+    public void setHireDate(String hireDate) { this.hireDate = hireDate; }
+    public void setTerminationDate(String terminationDate) { this.terminationDate = terminationDate; }
     public void setDepartment(String department) { this.department = department; }
     public void setAttendancePercentage(double attendancePercentage) { this.attendancePercentage = attendancePercentage; }
     public void setYearsOfService(int yearsOfService) { this.yearsOfService = yearsOfService; }
@@ -59,11 +67,10 @@ public class Employee {
         return "Employee{" +
                 "id=" + employeeId +
                 ", name='" + name + '\'' +
-                ", department='" + department + '\'' +
-                ", attendance=" + attendancePercentage +
-                "%, years=" + yearsOfService +
-                ", promotions=" + promotionCount +
-                ", status=" + employmentStatus +
+                ", hire=" + hireDate +
+                ", dept='" + department + '\'' +
+                ", att=" + attendancePercentage +
+                "%, status=" + employmentStatus +
                 '}';
     }
 }
