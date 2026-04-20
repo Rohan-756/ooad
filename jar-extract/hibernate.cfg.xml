@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE hibernate-configuration PUBLIC
+        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+        "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+    <session-factory>
+        <!-- SQLite Connection -->
+        <property name="hibernate.connection.driver_class">org.sqlite.JDBC</property>
+        <property name="hibernate.connection.url">jdbc:sqlite:hrms.db</property>
+        <property name="hibernate.dialect">org.hibernate.community.dialect.SQLiteDialect</property>
+
+        <!-- ORM Settings -->
+        <property name="hibernate.hbm2ddl.auto">update</property>
+        <property name="hibernate.show_sql">false</property>
+        <property name="hibernate.format_sql">true</property>
+
+        <!-- Connection Pool -->
+        <property name="hibernate.connection.pool_size">5</property>
+        <property name="hibernate.current_session_context_class">thread</property>
+
+        <!-- ==================== Entity Mappings ==================== -->
+
+        <!-- Core -->
+        <mapping class="com.hrms.db.entities.Employee"/>
+
+        <!-- Attendance & Leave -->
+        <mapping class="com.hrms.db.entities.Attendance"/>
+        <mapping class="com.hrms.db.entities.LeaveRecord"/>
+        <mapping class="com.hrms.db.entities.LeaveBalance"/>
+        <mapping class="com.hrms.db.entities.LeavePolicy"/>
+        <mapping class="com.hrms.db.entities.Holiday"/>
+
+        <!-- Payroll -->
+        <mapping class="com.hrms.db.entities.Financial"/>
+        <mapping class="com.hrms.db.entities.PayrollResult"/>
+        <mapping class="com.hrms.db.entities.PayrollAuditLog"/>
+        <mapping class="com.hrms.db.entities.FileReference"/>
+
+        <!-- Expense -->
+        <mapping class="com.hrms.db.entities.ExpenseClaim"/>
+        <mapping class="com.hrms.db.entities.ExpenseCategory"/>
+        <mapping class="com.hrms.db.entities.DepartmentBudget"/>
+        <mapping class="com.hrms.db.entities.ClaimApproval"/>
+        <mapping class="com.hrms.db.entities.Receipt"/>
+        <mapping class="com.hrms.db.entities.ExpenseAuditLog"/>
+
+        <!-- Time Tracking -->
+        <mapping class="com.hrms.db.entities.TimeEntry"/>
+        <mapping class="com.hrms.db.entities.BreakRecord"/>
+        <mapping class="com.hrms.db.entities.OvertimeRecord"/>
+        <mapping class="com.hrms.db.entities.WorkPolicy"/>
+
+        <!-- Recruitment -->
+        <mapping class="com.hrms.db.entities.JobPosting"/>
+        <mapping class="com.hrms.db.entities.Candidate"/>
+        <mapping class="com.hrms.db.entities.Application"/>
+        <mapping class="com.hrms.db.entities.ScreeningResult"/>
+        <mapping class="com.hrms.db.entities.InterviewerProfile"/>
+        <mapping class="com.hrms.db.entities.InterviewerAvailability"/>
+        <mapping class="com.hrms.db.entities.InterviewSchedule"/>
+        <mapping class="com.hrms.db.entities.InterviewResult"/>
+        <mapping class="com.hrms.db.entities.Offer"/>
+
+        <!-- Performance -->
+        <mapping class="com.hrms.db.entities.Goal"/>
+        <mapping class="com.hrms.db.entities.Kpi"/>
+        <mapping class="com.hrms.db.entities.Appraisal"/>
+        <mapping class="com.hrms.db.entities.Feedback"/>
+        <mapping class="com.hrms.db.entities.SkillGap"/>
+
+        <!-- Benefits -->
+        <mapping class="com.hrms.db.entities.BenefitPlan"/>
+        <mapping class="com.hrms.db.entities.BenefitPolicy"/>
+        <mapping class="com.hrms.db.entities.BenefitEnrollment"/>
+        <mapping class="com.hrms.db.entities.BenefitDeduction"/>
+
+        <!-- Succession Planning -->
+        <mapping class="com.hrms.db.entities.CriticalRole"/>
+        <mapping class="com.hrms.db.entities.ReadinessScore"/>
+        <mapping class="com.hrms.db.entities.SuccessorAssignment"/>
+        <mapping class="com.hrms.db.entities.DevelopmentPlan"/>
+        <mapping class="com.hrms.db.entities.PlanTask"/>
+
+        <!-- Onboarding / Offboarding -->
+        <mapping class="com.hrms.db.entities.OnboardingTask"/>
+        <mapping class="com.hrms.db.entities.ClearanceSettlement"/>
+        <mapping class="com.hrms.db.entities.ExitInterview"/>
+
+        <!-- Document Management -->
+        <mapping class="com.hrms.db.entities.Document"/>
+        <mapping class="com.hrms.db.entities.DocumentMetadataRecord"/>
+        <mapping class="com.hrms.db.entities.DocumentAuditLogRecord"/>
+
+        <!-- Security -->
+        <mapping class="com.hrms.db.entities.UserSession"/>
+        <mapping class="com.hrms.db.entities.AccessPermission"/>
+        <mapping class="com.hrms.db.entities.SecurityAuditLog"/>
+
+        <!-- Analytics -->
+        <mapping class="com.hrms.db.entities.HrReport"/>
+        <mapping class="com.hrms.db.entities.DashboardConfig"/>
+
+        <!-- Multi-Country -->
+        <mapping class="com.hrms.db.entities.Country"/>
+        <mapping class="com.hrms.db.entities.Currency"/>
+        <mapping class="com.hrms.db.entities.ExchangeRate"/>
+        <mapping class="com.hrms.db.entities.TaxRegime"/>
+        <mapping class="com.hrms.db.entities.CompliancePolicy"/>
+        <mapping class="com.hrms.db.entities.LocaleConfig"/>
+        <mapping class="com.hrms.db.entities.PublicHoliday"/>
+
+        <!-- Customization -->
+        <mapping class="com.hrms.db.entities.CustomModule"/>
+        <mapping class="com.hrms.db.entities.CustomForm"/>
+        <mapping class="com.hrms.db.entities.CustomField"/>
+        <mapping class="com.hrms.db.entities.Workflow"/>
+        <mapping class="com.hrms.db.entities.WorkflowTask"/>
+
+        <!-- Notifications -->
+        <mapping class="com.hrms.db.entities.Notification"/>
+    </session-factory>
+</hibernate-configuration>

@@ -16,7 +16,7 @@ import java.sql.Statement;
  */
 public class DBConnection {
 
-    private static final String DB_URL = "jdbc:sqlite:hrms_attrition.db";
+    private static final String DB_URL = "jdbc:sqlite:hrms.db";
     private static volatile DBConnection instance = null;
     private Connection connection;
     private boolean dummyMode = false;
@@ -80,36 +80,14 @@ public class DBConnection {
     }
 
     /**
-     * Initializes all required database tables on first run.
-     * Uses CREATE TABLE IF NOT EXISTS for idempotency.
+     * Initializes attrition-subsystem tables on first run.
+     *
+     * NOTE: The `employees` and `exit_interviews` tables are owned and managed
+     * by the DB team (hrms-database.jar / hrms.db). We must NOT recreate them.
+     * We only create the two tables that belong to this subsystem.
      */
     private void initializeSchema() {
-        String createEmployees = """
-                CREATE TABLE IF NOT EXISTS employees (
-                    employee_id     INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name            TEXT NOT NULL,
-                    hire_date       TEXT,
-                    termination_date TEXT,
-                    department      TEXT NOT NULL,
-                    attendance_pct  REAL NOT NULL DEFAULT 100.0,
-                    years_of_service INTEGER NOT NULL DEFAULT 0,
-                    promotion_count  INTEGER NOT NULL DEFAULT 0,
-                    employment_status TEXT NOT NULL DEFAULT 'ACTIVE'
-                );
-                """;
-
-        String createExitInterviews = """
-                CREATE TABLE IF NOT EXISTS exit_interviews (
-                    interview_id    INTEGER PRIMARY KEY AUTOINCREMENT,
-                    employee_id     INTEGER NOT NULL,
-                    exit_reason     TEXT NOT NULL,
-                    feedback        TEXT,
-                    interview_date  TEXT NOT NULL,
-                    FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
-                );
-                """;
-
-        // Stub tables for other modules — allow cross-module queries
+        // Attrition rate history — owned by Attrition Analysis subsystem
         String createAttritionRecords = """
                 CREATE TABLE IF NOT EXISTS attrition_records (
                     record_id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,23 +98,21 @@ public class DBConnection {
                 );
                 """;
 
+        // Risk evaluations — owned by Attrition Analysis subsystem
         String createRiskAssessments = """
                 CREATE TABLE IF NOT EXISTS risk_assessments (
                     assessment_id   INTEGER PRIMARY KEY AUTOINCREMENT,
                     employee_id     INTEGER NOT NULL,
                     risk_level      TEXT NOT NULL,
                     reason          TEXT,
-                    assessed_date   TEXT NOT NULL,
-                    FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
+                    assessed_date   TEXT NOT NULL
                 );
                 """;
 
         try (Statement stmt = connection.createStatement()) {
-            stmt.execute(createEmployees);
-            stmt.execute(createExitInterviews);
             stmt.execute(createAttritionRecords);
             stmt.execute(createRiskAssessments);
-            System.out.println("[DBConnection] Database schema initialized successfully.");
+            System.out.println("[DBConnection] Attrition-subsystem tables initialized (attrition_records, risk_assessments).");
         } catch (SQLException e) {
             throw new RuntimeException("Failed to initialize database schema: " + e.getMessage(), e);
         }

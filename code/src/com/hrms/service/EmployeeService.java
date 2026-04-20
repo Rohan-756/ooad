@@ -40,16 +40,21 @@ public class EmployeeService {
     public int addEmployee(Employee employee) {
         validateEmployee(employee);
 
+        // emp_id is the DB team's varchar PK — generate a unique string.
+        // We use the SQLite rowid (auto-assigned) as our integer employee_id.
+        String empId = "EMP_" + System.currentTimeMillis();
+
         String sql = """
-                INSERT INTO employees (name, hire_date, termination_date, department,
-                    attendance_pct, years_of_service, promotion_count, employment_status)
+                INSERT INTO employees
+                    (emp_id, name, date_of_joining, department,
+                     attendance_rate, years_of_service, months_since_promotion, employment_status)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setString(1, employee.getName());
-            ps.setString(2, employee.getHireDate());
-            ps.setString(3, employee.getTerminationDate());
+            ps.setString(1, empId);
+            ps.setString(2, employee.getName());
+            ps.setString(3, employee.getHireDate());
             ps.setString(4, employee.getDepartment());
             ps.setDouble(5, employee.getAttendancePercentage());
             ps.setInt(6, employee.getYearsOfService());
@@ -59,7 +64,7 @@ public class EmployeeService {
 
             ResultSet keys = ps.getGeneratedKeys();
             if (keys.next()) {
-                int generatedId = keys.getInt(1);
+                int generatedId = keys.getInt(1); // SQLite rowid
                 System.out.println("[EmployeeService] Employee added with ID: " + generatedId);
                 return generatedId;
             }
@@ -81,7 +86,8 @@ public class EmployeeService {
      * @throws HRMSException.InvalidEmployeeIdException if not found.
      */
     public Employee getEmployeeById(int employeeId) {
-        String sql = "SELECT * FROM employees WHERE employee_id = ?";
+        // Use rowid as the stable integer PK into the DB team's employees table
+        String sql = "SELECT rowid AS employee_id, * FROM employees WHERE rowid = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, employeeId);
             ResultSet rs = ps.executeQuery();
@@ -103,7 +109,7 @@ public class EmployeeService {
         if (dummyMode) return getDummyEmployees();
 
         List<Employee> employees = new ArrayList<>();
-        String sql = "SELECT * FROM employees ORDER BY employee_id";
+        String sql = "SELECT rowid AS employee_id, * FROM employees ORDER BY rowid";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
@@ -179,22 +185,21 @@ public class EmployeeService {
 
         String sql = """
                 UPDATE employees SET
-                    name = ?, hire_date = ?, termination_date = ?, department = ?,
-                    attendance_pct = ?, years_of_service = ?, promotion_count = ?,
+                    name = ?, date_of_joining = ?, department = ?,
+                    attendance_rate = ?, years_of_service = ?, months_since_promotion = ?,
                     employment_status = ?
-                WHERE employee_id = ?
+                WHERE rowid = ?
                 """;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, employee.getName());
             ps.setString(2, employee.getHireDate());
-            ps.setString(3, employee.getTerminationDate());
-            ps.setString(4, employee.getDepartment());
-            ps.setDouble(5, employee.getAttendancePercentage());
-            ps.setInt(6, employee.getYearsOfService());
-            ps.setInt(7, employee.getPromotionCount());
-            ps.setString(8, employee.getEmploymentStatus().name());
-            ps.setInt(9, employee.getEmployeeId());
+            ps.setString(3, employee.getDepartment());
+            ps.setDouble(4, employee.getAttendancePercentage());
+            ps.setInt(5, employee.getYearsOfService());
+            ps.setInt(6, employee.getPromotionCount());
+            ps.setString(7, employee.getEmploymentStatus().name());
+            ps.setInt(8, employee.getEmployeeId());
             ps.executeUpdate();
             System.out.println("[EmployeeService] Employee ID " + employee.getEmployeeId() + " updated.");
         } catch (SQLException e) {
@@ -209,7 +214,7 @@ public class EmployeeService {
         // Verify existence
         getEmployeeById(employeeId);
 
-        String sql = "UPDATE employees SET employment_status = 'EXITED' WHERE employee_id = ?";
+        String sql = "UPDATE employees SET employment_status = 'EXITED' WHERE rowid = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, employeeId);
             ps.executeUpdate();
@@ -230,7 +235,7 @@ public class EmployeeService {
     public void deleteEmployee(int employeeId) {
         getEmployeeById(employeeId); // Existence check
 
-        String sql = "DELETE FROM employees WHERE employee_id = ?";
+        String sql = "DELETE FROM employees WHERE rowid = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, employeeId);
             ps.executeUpdate();
@@ -281,15 +286,28 @@ public class EmployeeService {
 
     private Employee mapResultSetToEmployee(ResultSet rs) throws SQLException {
         return new Employee(
-                rs.getInt("employee_id"),
+                rs.getInt("employee_id"),           // rowid alias
                 rs.getString("name"),
-                rs.getString("hire_date"),
-                rs.getString("termination_date"),
+                rs.getString("date_of_joining"),    // was hire_date
+                null,                               // termination_date not in hrms.db; tracked via exit_interviews
                 rs.getString("department"),
-                rs.getDouble("attendance_pct"),
+                rs.getDouble("attendance_rate"),    // was attendance_pct
                 rs.getInt("years_of_service"),
-                rs.getInt("promotion_count"),
-                Employee.EmploymentStatus.valueOf(rs.getString("employment_status"))
+                rs.getInt("months_since_promotion"), // was promotion_count
+                parseStatus(rs.getString("employment_status"))
         );
+    }
+
+    /**
+     * Safely maps employment_status string to enum.
+     * Defaults to ACTIVE for any DB team status values not in our enum
+     * (e.g. TERMINATED, RESIGNED, etc.).
+     */
+    private Employee.EmploymentStatus parseStatus(String s) {
+        try {
+            return Employee.EmploymentStatus.valueOf(s);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return Employee.EmploymentStatus.ACTIVE;
+        }
     }
 }
