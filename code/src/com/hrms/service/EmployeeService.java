@@ -3,6 +3,7 @@ package com.hrms.service;
 import com.hrms.db.DBConnection;
 import com.hrms.exception.HRMSException;
 import com.hrms.model.Employee;
+import com.hrms.service.validation.*;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -254,30 +255,11 @@ public class EmployeeService {
      * Throws InvalidInputException for any invalid field.
      */
     public void validateEmployee(Employee employee) {
-        if (employee == null) {
-            throw new HRMSException.InvalidInputException("Employee object cannot be null.");
-        }
-        if (employee.getName() == null || employee.getName().trim().isEmpty()) {
-            throw new HRMSException.InvalidInputException("Employee name cannot be empty.");
-        }
-        if (employee.getDepartment() == null || employee.getDepartment().trim().isEmpty()) {
-            throw new HRMSException.InvalidInputException("Department cannot be empty.");
-        }
-        if (employee.getAttendancePercentage() < 0 || employee.getAttendancePercentage() > 100) {
-            throw new HRMSException.InvalidInputException(
-                    "Attendance percentage must be between 0 and 100. Got: " + employee.getAttendancePercentage());
-        }
-        if (employee.getYearsOfService() < 0) {
-            throw new HRMSException.InvalidInputException(
-                    "Years of service cannot be negative. Got: " + employee.getYearsOfService());
-        }
-        if (employee.getPromotionCount() < 0) {
-            throw new HRMSException.InvalidInputException(
-                    "Promotion count cannot be negative. Got: " + employee.getPromotionCount());
-        }
-        if (employee.getEmploymentStatus() == null) {
-            throw new HRMSException.InvalidInputException("Employment status cannot be null.");
-        }
+        EmployeeValidator validator = new BasicInfoValidator();
+        validator.linkWith(new MetricsValidator())
+                 .linkWith(new StatusValidator());
+                 
+        validator.check(employee);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

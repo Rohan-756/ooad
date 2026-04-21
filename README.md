@@ -41,12 +41,32 @@ Implemented to build a reactive UI that automatically updates when backend data 
 Used to simplify the interactions with multiple complex analytics services.
 - **`DashboardService`**: Aggregates calls to `SegmentationService`, `AnalyticsService`, and other sub-services to build a comprehensive `DashboardSnapshot` for the UI, hiding the underlying complexity.
 
-### 3.6. Integration Interfaces
+### 3.6. Chain of Responsibility Pattern
+Implemented to handle validation of `Employee` objects flexibly, ensuring that validation logic is decoupled from the main `EmployeeService`.
+- **`EmployeeValidator`**: Base abstract class forming the chain.
+- **Implementations**: `BasicInfoValidator`, `MetricsValidator`, and `StatusValidator` handle specific validation responsibilities in sequence.
+
+### 3.7. Integration Interfaces
 The system provides clean contracts to integrate with third-party or external HR systems:
 - **`IHRAnalyticsReportingService`**: Interface contract for external analytics and reporting.
 - **`IPayrollService`**: Interface contract for interacting with external payroll management systems.
 
-## 4. Project Structure
+## 4. SOLID Principles
+- **Single Responsibility Principle (SRP)**: Services like `EmployeeService`, `AttritionService`, and `RiskService` have one clear area of responsibility. `DBConnection` only manages the database connection.
+- **Open/Closed Principle (OCP)**: The Risk Evaluation engine (`RiskStrategy`) is open for extension (e.g., adding a new risk level) but closed for modification.
+- **Liskov Substitution Principle (LSP)**: Any specific `RiskStrategy` (e.g., `HighRiskStrategy`) can substitute the base `RiskStrategy` interface seamlessly without breaking `RiskFactory`.
+- **Interface Segregation Principle (ISP)**: Large interfaces were avoided in favor of focused ones like `IDashboardService` and `IAttritionRate`.
+- **Dependency Inversion Principle (DIP)**: `DashboardService` interacts with subsystems via abstractions where possible, and services depend on the `DBConnection` abstraction instead of concrete data access logic.
+
+## 5. GRASP Principles
+- **Creator**: `DashboardService` is responsible for creating the `DashboardSnapshot` since it aggregates all the necessary data.
+- **Information Expert**: `AttritionService` calculates attrition rates because it possesses (or coordinates with the DB to get) all the historical employee data.
+- **Controller**: `DashboardController` and `EmployeeController` handle system events from the Swing UI and delegate to the appropriate Services.
+- **Low Coupling**: Utilizing the **Observer** (`DataEventBus`) pattern decouples the UI from the background services. The UI simply listens for data updates without tightly coupling to service implementations.
+- **High Cohesion**: Classes are highly focused on their core domain (e.g., `EmployeeService` handles only CRUD operations for employees).
+- **Polymorphism**: Used in the risk calculation engine where `RiskStrategy.evaluate()` is implemented differently depending on the concrete strategy.
+
+## 6. Project Structure
 - `com.hrms.controller`: Request routing, input validation, and delegation to services.
 - `com.hrms.db`: SQLite database connection management (`DBConnection`).
 - `com.hrms.exception`: Custom exceptions (e.g., `HRMSException`, `DivideByZeroException`, `InvalidDateRangeException`).
@@ -54,7 +74,7 @@ The system provides clean contracts to integrate with third-party or external HR
 - `com.hrms.service`: Core business logic, interfaces, and patterns implementation.
 - `com.hrms.ui`: Java Swing-based user interface.
 
-## 5. Commit History & Project Evolution
+## 7. Commit History & Project Evolution
 
 The development of the project was carried out iteratively. Below is the commit history explaining the progression:
 
