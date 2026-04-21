@@ -201,7 +201,7 @@ public class ExitInterviewService {
     public int getExitedEmployeeCount() {
         if (dummyMode) return 3;
 
-        String sql = "SELECT COUNT(DISTINCT employee_id) FROM exit_interviews";
+        String sql = "SELECT COUNT(DISTINCT emp_id) FROM exit_interviews";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             if (rs.next()) return rs.getInt(1);
