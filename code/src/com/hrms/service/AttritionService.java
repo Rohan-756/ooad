@@ -135,11 +135,11 @@ public class AttritionService implements IAttritionRate {
                 WHERE (e.date_of_joining IS NULL OR date(e.date_of_joining) <= ?)
                   AND (
                       NOT EXISTS (
-                          SELECT 1 FROM ExitInterview ei
+                          SELECT 1 FROM exit_interviews ei
                           WHERE ei.emp_id = e.emp_id
                       )
                       OR EXISTS (
-                          SELECT 1 FROM ExitInterview ei
+                          SELECT 1 FROM exit_interviews ei
                           WHERE ei.emp_id = e.emp_id
                             AND date(ei.exit_date) > ?
                       )
@@ -168,8 +168,8 @@ public class AttritionService implements IAttritionRate {
             return 5 + (bucketStart.getMonthValue() % 5); // 5..9
         }
         String sql = """
-                SELECT COUNT(DISTINCT emp_id) FROM ExitInterview
-                WHERE date(exit_date) >= ? AND date(exit_date) <= ?
+                SELECT COUNT(DISTINCT emp_id) FROM exit_interviews
+                WHERE exit_date >= ? AND exit_date <= ?
                 """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, bucketStart.toString());

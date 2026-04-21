@@ -81,7 +81,7 @@ public class ExitInterviewService {
         String interviewId = "EI_" + System.currentTimeMillis();
 
         String sql = """
-                INSERT INTO ExitInterview
+                INSERT INTO exit_interviews
                     (interview_id, emp_id, primary_reason, feedback_text, exit_date)
                 VALUES (?, ?, ?, ?, ?)
                 """;
@@ -130,7 +130,7 @@ public class ExitInterviewService {
         String interviewId = "EI_" + System.currentTimeMillis();
 
         String sql = """
-                INSERT INTO ExitInterview
+                INSERT INTO exit_interviews
                     (interview_id, emp_id, primary_reason, feedback_text, exit_date)
                 VALUES (?, ?, ?, ?, ?)
                 """;
@@ -172,7 +172,7 @@ public class ExitInterviewService {
         Employee employee = employeeService.getEmployeeById(rowId);
 
         String sql = """
-                SELECT rowid AS row_id, * FROM ExitInterview
+                SELECT rowid AS row_id, * FROM exit_interviews
                 WHERE emp_id = ?
                 ORDER BY row_id DESC LIMIT 1
                 """;
@@ -202,7 +202,7 @@ public class ExitInterviewService {
         }
 
         List<ExitInterview> list = new ArrayList<>();
-        String sql = "SELECT rowid AS row_id, * FROM ExitInterview ORDER BY row_id DESC";
+        String sql = "SELECT rowid AS row_id, * FROM exit_interviews ORDER BY row_id DESC";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
@@ -222,7 +222,7 @@ public class ExitInterviewService {
         if (dummyMode) return 3;
 
         // emp_id is the PK FK — count distinct employees with an exit interview
-        String sql = "SELECT COUNT(DISTINCT emp_id) FROM ExitInterview";
+        String sql = "SELECT COUNT(DISTINCT emp_id) FROM exit_interviews";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             if (rs.next()) return rs.getInt(1);
