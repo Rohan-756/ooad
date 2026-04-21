@@ -387,9 +387,9 @@ public class MainDashboard extends JFrame {
                 idDisplay.setText("ID: " + emp.getEmployeeId());
                 nameField.setText(emp.getName());
                 deptCombo.setSelectedItem(emp.getDepartment());
-                attendanceField.setText(String.valueOf(emp.getAttendancePercentage()));
+                attendanceField.setText(String.valueOf(emp.getAttendanceRate()));
                 yearsField.setText(String.valueOf(emp.getYearsOfService()));
-                promotionField.setText(String.valueOf(emp.getPromotionCount()));
+                promotionField.setText(String.valueOf(emp.getMonthsSincePromotion()));
                 statusCombo.setSelectedItem(emp.getEmploymentStatus());
                 showSuccess(editCard, "✅ Employee found.");
             } catch (NumberFormatException ex) {
@@ -614,8 +614,8 @@ public class MainDashboard extends JFrame {
             for (Employee emp : employees) {
                 employeeTableModel.addRow(new Object[]{
                     emp.getEmployeeId(), emp.getName(), emp.getDepartment(),
-                    String.format("%.1f%%", emp.getAttendancePercentage()),
-                    emp.getYearsOfService(), emp.getPromotionCount(),
+                    String.format("%.1f%%", emp.getAttendanceRate()),
+                    emp.getYearsOfService(), emp.getMonthsSincePromotion(),
                     emp.getEmploymentStatus().name()
                 });
             }
@@ -624,11 +624,11 @@ public class MainDashboard extends JFrame {
             exitTableModel.setRowCount(0);
             List<ExitInterview> interviews = controller.handleGetAllExitInterviews();
             for (ExitInterview ei : interviews) {
-                String fb = ei.getFeedback();
+                String fb = ei.getFeedbackText();
                 if (fb != null && fb.length() > 40) fb = fb.substring(0, 40) + "...";
                 exitTableModel.addRow(new Object[]{
                     ei.getInterviewId(), ei.getEmployeeId(),
-                    ei.getExitReason(), fb != null ? fb : "(none)", ei.getInterviewDate()
+                    ei.getPrimaryReason(), fb != null ? fb : "(none)", ei.getExitDate()
                 });
             }
 

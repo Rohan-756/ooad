@@ -27,8 +27,8 @@ public class RiskFactory {
      * @return A concrete RiskStrategy instance.
      */
     public static RiskStrategy getStrategy(Employee employee) {
-        double attendance = employee.getAttendancePercentage();
-        int    promotions = employee.getPromotionCount();
+        double attendance = employee.getAttendanceRate();
+        int    promotions = employee.getMonthsSincePromotion();
 
         if (attendance < 65.0) {
             return new HighRiskStrategy();

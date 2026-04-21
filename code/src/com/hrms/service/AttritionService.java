@@ -16,7 +16,11 @@ import java.util.List;
 /**
  * AttritionService — implements business logic to compute attrition and trends.
  *
- * Uses `hire_date` and `termination_date` fields (text ISO date) added to employees table.
+ * Schema note (aligned with hrms-database.jar entities):
+ *   - employees table uses `date_of_joining` (not `hire_date`).
+ *   - There is NO `termination_date` column in the employees table.
+ *   - Employee exits are tracked via the `ExitInterview` table using the `exit_date` column.
+ *     Hibernate table name for the entity is `ExitInterview` (class name, not snake_case).
  */
 public class AttritionService implements IAttritionRate {
 
@@ -38,7 +42,7 @@ public class AttritionService implements IAttritionRate {
 
         // For an overall period, compute totals by SQL
         int total = countEmployeesEmployedDuring(startDate, endDate);
-        int left = countTerminationsWithin(startDate, endDate);
+        int left  = countExitsWithin(startDate, endDate);
 
         if (total == 0)
             throw new HRMSException.DivideByZeroException(
@@ -95,23 +99,13 @@ public class AttritionService implements IAttritionRate {
             if (bucketEnd.isAfter(endDate)) bucketEnd = endDate;
 
             int total = countEmployeesEmployedDuring(bucketStart, bucketEnd);
-            int left = countTerminationsWithin(bucketStart, bucketEnd);
+            int left  = countExitsWithin(bucketStart, bucketEnd);
             double rate = (total > 0) ? (left / (double) total) * 100.0 : 0.0;
 
             trend.add(new AttritionRecord(bucketStart, bucketEnd, total, left, rate));
 
             // advance cursor
-            switch (periodType) {
-                case MONTHLY:
-                    cursor = bucketEnd.plusDays(1);
-                    break;
-                case QUARTERLY:
-                    cursor = bucketEnd.plusDays(1);
-                    break;
-                case ANNUAL:
-                    cursor = bucketEnd.plusDays(1);
-                    break;
-            }
+            cursor = bucketEnd.plusDays(1);
         }
 
         // Notify dashboard observers — Observer Pattern
@@ -120,17 +114,37 @@ public class AttritionService implements IAttritionRate {
         return trend;
     }
 
-    // Count employees employed at any time during [bucketStart, bucketEnd]
+    /**
+     * Count employees employed at any time during [bucketStart, bucketEnd].
+     *
+     * Uses `date_of_joining` (column in hrms-database.jar Employee entity) as the
+     * hire-date proxy. There is no `termination_date` column; an employee is considered
+     * to still be employed unless they have a row in the ExitInterview table.
+     */
     private int countEmployeesEmployedDuring(LocalDate bucketStart, LocalDate bucketEnd) {
         if (dummyMode || conn == null) {
             // Dummy fallback for development when DB is unavailable.
-            // Return a stable, simple synthetic total that varies slightly by month.
             int base = 100;
             int monthFactor = bucketStart.getMonthValue() - 1;
             return base + monthFactor * 2;
         }
-        String sql = "SELECT COUNT(*) FROM employees WHERE (hire_date IS NULL OR date(hire_date) <= ?) " +
-                "AND (termination_date IS NULL OR date(termination_date) > ?)";
+        // An employee is "employed during" the period if they joined on or before
+        // the bucket end AND either haven't exited yet, or exited after the bucket start.
+        String sql = """
+                SELECT COUNT(*) FROM employees e
+                WHERE (e.date_of_joining IS NULL OR date(e.date_of_joining) <= ?)
+                  AND (
+                      NOT EXISTS (
+                          SELECT 1 FROM ExitInterview ei
+                          WHERE ei.emp_id = e.emp_id
+                      )
+                      OR EXISTS (
+                          SELECT 1 FROM ExitInterview ei
+                          WHERE ei.emp_id = e.emp_id
+                            AND date(ei.exit_date) > ?
+                      )
+                  )
+                """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, bucketEnd.toString());
             ps.setString(2, bucketStart.toString());
@@ -142,20 +156,28 @@ public class AttritionService implements IAttritionRate {
         return 0;
     }
 
-    // Count terminations whose termination_date falls within [bucketStart, bucketEnd]
-    private int countTerminationsWithin(LocalDate bucketStart, LocalDate bucketEnd) {
+    /**
+     * Count exits (ExitInterview rows) whose exit_date falls within [bucketStart, bucketEnd].
+     *
+     * Uses the `ExitInterview` table and the `exit_date` column (per hrms-database.jar schema).
+     * The old code incorrectly referenced `termination_date` on the employees table.
+     */
+    private int countExitsWithin(LocalDate bucketStart, LocalDate bucketEnd) {
         if (dummyMode || conn == null) {
             // Dummy fallback: small varying number of terminations per bucket.
             return 5 + (bucketStart.getMonthValue() % 5); // 5..9
         }
-        String sql = "SELECT COUNT(*) FROM employees WHERE termination_date IS NOT NULL AND date(termination_date) >= ? AND date(termination_date) <= ?";
+        String sql = """
+                SELECT COUNT(DISTINCT emp_id) FROM ExitInterview
+                WHERE date(exit_date) >= ? AND date(exit_date) <= ?
+                """;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, bucketStart.toString());
             ps.setString(2, bucketEnd.toString());
             ResultSet rs = ps.executeQuery();
             if (rs.next()) return rs.getInt(1);
         } catch (SQLException e) {
-            throw new RuntimeException("DB error counting terminations: " + e.getMessage(), e);
+            throw new RuntimeException("DB error counting exits: " + e.getMessage(), e);
         }
         return 0;
     }

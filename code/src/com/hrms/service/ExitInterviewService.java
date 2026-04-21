@@ -16,6 +16,16 @@ import java.util.List;
  * Handles recording and retrieval of exit interviews, validates employee
  * existence via EmployeeService, and enforces feedback rules.
  *
+ * Column mapping aligned with com.hrms.db.entities.ExitInterview (hrms-database.jar):
+ *   interview_id       (String PK)
+ *   emp_id             (String FK → employees.emp_id)
+ *   primary_reason     (was: exit_reason)
+ *   feedback_text      (was: feedback)
+ *   satisfaction_rating (Integer)
+ *   issues_reported
+ *   interviewer_notes
+ *   exit_date          (was: interview_date)
+ *
  * SOLID: SRP — Only manages exit interview business logic.
  */
 public class ExitInterviewService {
@@ -38,54 +48,59 @@ public class ExitInterviewService {
      * Records an exit interview for an employee.
      *
      * - Validates that the employee exists (throws InvalidEmployeeIdException if not).
-     * - Warns (throws MissingFeedbackException) if feedback is empty,
-     *   but allows submission to proceed if caller chooses.
+     * - Warns (throws MissingFeedbackException) if feedbackText is empty.
      * - Marks the employee as EXITED automatically.
      *
      * @param interview ExitInterview object to persist.
-     * @return The generated interview ID.
+     * @return The SQLite rowid of the inserted row.
      * @throws HRMSException.InvalidEmployeeIdException if the employee doesn't exist.
-     * @throws HRMSException.MissingFeedbackException   if feedback is empty (WARNING level).
+     * @throws HRMSException.MissingFeedbackException   if feedbackText is empty (WARNING level).
      */
     public int saveExitInterview(ExitInterview interview) {
-        // Validate employee exists
+        // Validate employee exists (by integer rowid via legacy path)
         Employee employee = employeeService.getEmployeeById(interview.getEmployeeId());
 
-        // Validate exit reason
-        if (interview.getExitReason() == null || interview.getExitReason().trim().isEmpty()) {
-            throw new HRMSException.InvalidInputException("Exit reason cannot be empty.");
+        // Validate primary reason
+        if (interview.getPrimaryReason() == null || interview.getPrimaryReason().trim().isEmpty()) {
+            throw new HRMSException.InvalidInputException("Exit reason (primary_reason) cannot be empty.");
         }
 
-        // WARNING: feedback is empty (can be caught & handled by caller)
-        if (interview.getFeedback() == null || interview.getFeedback().trim().isEmpty()) {
+        // WARNING: feedbackText is empty (can be caught & handled by caller)
+        if (interview.getFeedbackText() == null || interview.getFeedbackText().trim().isEmpty()) {
             throw new HRMSException.MissingFeedbackException(
                     "Feedback text is empty for employee ID " + interview.getEmployeeId() +
                     ". Submission allowed with warning.");
         }
 
-        // Set date if not provided
-        if (interview.getInterviewDate() == null || interview.getInterviewDate().isEmpty()) {
-            interview.setInterviewDate(LocalDate.now().toString());
+        // Set exit_date if not provided
+        if (interview.getExitDate() == null || interview.getExitDate().isEmpty()) {
+            interview.setExitDate(LocalDate.now().toString());
         }
 
+        // Generate a unique interview_id string
+        String interviewId = "EI_" + System.currentTimeMillis();
+
         String sql = """
-                INSERT INTO exit_interviews (employee_id, exit_reason, feedback, interview_date)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO ExitInterview
+                    (interview_id, emp_id, primary_reason, feedback_text, exit_date)
+                VALUES (?, ?, ?, ?, ?)
                 """;
 
-        int generatedId = -1;
+        int generatedRowId = -1;
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setInt(1, interview.getEmployeeId());
-            ps.setString(2, interview.getExitReason());
-            ps.setString(3, interview.getFeedback() != null ? interview.getFeedback() : "");
-            ps.setString(4, interview.getInterviewDate());
+            ps.setString(1, interviewId);
+            ps.setString(2, employee.getEmpId());
+            ps.setString(3, interview.getPrimaryReason());
+            ps.setString(4, interview.getFeedbackText() != null ? interview.getFeedbackText() : "");
+            ps.setString(5, interview.getExitDate());
             ps.executeUpdate();
 
             ResultSet keys = ps.getGeneratedKeys();
             if (keys.next()) {
-                generatedId = keys.getInt(1);
+                generatedRowId = keys.getInt(1);
             }
-            System.out.println("[ExitInterviewService] Exit interview saved with ID: " + generatedId);
+            System.out.println("[ExitInterviewService] Exit interview saved: id=" + interviewId +
+                               ", rowid=" + generatedRowId);
         } catch (SQLException e) {
             throw new RuntimeException("DB error saving exit interview: " + e.getMessage(), e);
         }
@@ -93,48 +108,52 @@ public class ExitInterviewService {
         // Mark employee as EXITED
         employeeService.markEmployeeAsExited(interview.getEmployeeId());
 
-        return generatedId;
+        return generatedRowId;
     }
 
     /**
-     * Saves an exit interview even without feedback (after WARNING was shown to user).
+     * Saves an exit interview even without feedbackText (after WARNING was shown to user).
      * Use this when the user acknowledges the missing feedback warning.
      */
     public int saveExitInterviewWithoutFeedback(ExitInterview interview) {
         // Validate employee exists
-        employeeService.getEmployeeById(interview.getEmployeeId());
+        Employee employee = employeeService.getEmployeeById(interview.getEmployeeId());
 
-        if (interview.getExitReason() == null || interview.getExitReason().trim().isEmpty()) {
-            throw new HRMSException.InvalidInputException("Exit reason cannot be empty.");
+        if (interview.getPrimaryReason() == null || interview.getPrimaryReason().trim().isEmpty()) {
+            throw new HRMSException.InvalidInputException("Exit reason (primary_reason) cannot be empty.");
         }
 
-        if (interview.getInterviewDate() == null || interview.getInterviewDate().isEmpty()) {
-            interview.setInterviewDate(LocalDate.now().toString());
+        if (interview.getExitDate() == null || interview.getExitDate().isEmpty()) {
+            interview.setExitDate(LocalDate.now().toString());
         }
+
+        String interviewId = "EI_" + System.currentTimeMillis();
 
         String sql = """
-                INSERT INTO exit_interviews (employee_id, exit_reason, feedback, interview_date)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO ExitInterview
+                    (interview_id, emp_id, primary_reason, feedback_text, exit_date)
+                VALUES (?, ?, ?, ?, ?)
                 """;
 
-        int generatedId = -1;
+        int generatedRowId = -1;
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            ps.setInt(1, interview.getEmployeeId());
-            ps.setString(2, interview.getExitReason());
-            ps.setString(3, "");
-            ps.setString(4, interview.getInterviewDate());
+            ps.setString(1, interviewId);
+            ps.setString(2, employee.getEmpId());
+            ps.setString(3, interview.getPrimaryReason());
+            ps.setString(4, "");
+            ps.setString(5, interview.getExitDate());
             ps.executeUpdate();
 
             ResultSet keys = ps.getGeneratedKeys();
             if (keys.next()) {
-                generatedId = keys.getInt(1);
+                generatedRowId = keys.getInt(1);
             }
         } catch (SQLException e) {
             throw new RuntimeException("DB error saving exit interview (no feedback): " + e.getMessage(), e);
         }
 
         employeeService.markEmployeeAsExited(interview.getEmployeeId());
-        return generatedId;
+        return generatedRowId;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -142,24 +161,24 @@ public class ExitInterviewService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Retrieves the exit interview for a specific employee.
+     * Retrieves the most recent exit interview for a specific employee (by integer rowid).
      *
-     * @param employeeId the employee ID.
+     * @param rowId the employee's SQLite rowid.
      * @return The most recent ExitInterview for that employee, or null if none.
      * @throws HRMSException.InvalidEmployeeIdException if employee doesn't exist.
      */
-    public ExitInterview getInterviewByEmployee(int employeeId) {
+    public ExitInterview getInterviewByEmployee(int rowId) {
         // Validate employee exists
-        employeeService.getEmployeeById(employeeId);
+        Employee employee = employeeService.getEmployeeById(rowId);
 
         String sql = """
-                SELECT * FROM exit_interviews
-                WHERE employee_id = ?
-                ORDER BY interview_id DESC LIMIT 1
+                SELECT rowid AS row_id, * FROM ExitInterview
+                WHERE emp_id = ?
+                ORDER BY row_id DESC LIMIT 1
                 """;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, employeeId);
+            ps.setString(1, employee.getEmpId());
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 return mapResultSetToInterview(rs);
@@ -177,13 +196,13 @@ public class ExitInterviewService {
         if (dummyMode) {
             List<ExitInterview> list = new ArrayList<>();
             list.add(new ExitInterview(1, 2, "BETTER_OPPORTUNITY", "Moving to a larger firm.", "2023-08-15"));
-            list.add(new ExitInterview(2, 4, "WORK_LIFE_BALANCE", "Commute was too long.", "2024-01-10"));
-            list.add(new ExitInterview(3, 7, "CAREER_GROWTH", "Felt stagnant in current role.", "2023-11-20"));
+            list.add(new ExitInterview(2, 4, "WORK_LIFE_BALANCE",  "Commute was too long.",   "2024-01-10"));
+            list.add(new ExitInterview(3, 7, "CAREER_GROWTH",      "Felt stagnant in role.",  "2023-11-20"));
             return list;
         }
 
         List<ExitInterview> list = new ArrayList<>();
-        String sql = "SELECT * FROM exit_interviews ORDER BY interview_id DESC";
+        String sql = "SELECT rowid AS row_id, * FROM ExitInterview ORDER BY row_id DESC";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
@@ -196,12 +215,14 @@ public class ExitInterviewService {
     }
 
     /**
-     * Returns the count of employees who have exited — used by AttritionService.
+     * Returns the count of employees who have at least one exit interview.
+     * Used by AttritionService.
      */
     public int getExitedEmployeeCount() {
         if (dummyMode) return 3;
 
-        String sql = "SELECT COUNT(DISTINCT employee_id) FROM exit_interviews";
+        // emp_id is the PK FK — count distinct employees with an exit interview
+        String sql = "SELECT COUNT(DISTINCT emp_id) FROM ExitInterview";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             if (rs.next()) return rs.getInt(1);
@@ -215,13 +236,23 @@ public class ExitInterviewService {
     // HELPER
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Maps a ResultSet row to an ExitInterview model.
+     *
+     * Columns match com.hrms.db.entities.ExitInterview Hibernate entity:
+     *   interview_id, emp_id, primary_reason, feedback_text,
+     *   satisfaction_rating, issues_reported, interviewer_notes, exit_date
+     */
     private ExitInterview mapResultSetToInterview(ResultSet rs) throws SQLException {
         return new ExitInterview(
-                rs.getInt("interview_id"),
-                rs.getInt("employee_id"),
-                rs.getString("exit_reason"),
-                rs.getString("feedback"),
-                rs.getString("interview_date")
+                rs.getString("interview_id"),
+                rs.getString("emp_id"),
+                rs.getString("primary_reason"),
+                rs.getString("feedback_text"),
+                rs.getInt("satisfaction_rating") == 0 ? null : rs.getInt("satisfaction_rating"),
+                rs.getString("issues_reported"),
+                rs.getString("interviewer_notes"),
+                rs.getString("exit_date")
         );
     }
 }

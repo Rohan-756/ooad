@@ -42,9 +42,9 @@ public class EmployeeController {
         Employee emp = new Employee();
         emp.setName(name);
         emp.setDepartment(department);
-        emp.setAttendancePercentage(attendance);
+        emp.setAttendanceRate(attendance);
         emp.setYearsOfService(yearsOfService);
-        emp.setPromotionCount(promotionCount);
+        emp.setMonthsSincePromotion(promotionCount);
         emp.setEmploymentStatus(status);
 
         return employeeService.addEmployee(emp);
@@ -75,9 +75,9 @@ public class EmployeeController {
         emp.setEmployeeId(employeeId);
         emp.setName(name);
         emp.setDepartment(department);
-        emp.setAttendancePercentage(attendance);
+        emp.setAttendanceRate(attendance);
         emp.setYearsOfService(yearsOfService);
-        emp.setPromotionCount(promotionCount);
+        emp.setMonthsSincePromotion(promotionCount);
         emp.setEmploymentStatus(status);
 
         employeeService.updateEmployee(emp);
@@ -118,9 +118,9 @@ public class EmployeeController {
                                         String feedback, String date) {
         ExitInterview interview = new ExitInterview();
         interview.setEmployeeId(employeeId);
-        interview.setExitReason(exitReason);
-        interview.setFeedback(feedback);
-        interview.setInterviewDate(date);
+        interview.setPrimaryReason(exitReason);
+        interview.setFeedbackText(feedback);
+        interview.setExitDate(date);
 
         return exitInterviewService.saveExitInterview(interview);
     }
@@ -131,9 +131,9 @@ public class EmployeeController {
     public int handleSaveExitInterviewNoFeedback(int employeeId, String exitReason, String date) {
         ExitInterview interview = new ExitInterview();
         interview.setEmployeeId(employeeId);
-        interview.setExitReason(exitReason);
-        interview.setFeedback("");
-        interview.setInterviewDate(date);
+        interview.setPrimaryReason(exitReason);
+        interview.setFeedbackText("");
+        interview.setExitDate(date);
 
         return exitInterviewService.saveExitInterviewWithoutFeedback(interview);
     }

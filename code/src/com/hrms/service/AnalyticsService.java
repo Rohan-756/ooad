@@ -59,14 +59,14 @@ public class AnalyticsService implements IAnalyticsService {
         }
 
         // Mean attendance
-        double avgExitedAtt = avg(exited, Employee::getAttendancePercentage);
-        double avgActiveAtt  = avg(active, Employee::getAttendancePercentage);
+        double avgExitedAtt = avg(exited, Employee::getAttendanceRate);
+        double avgActiveAtt  = avg(active, Employee::getAttendanceRate);
         // Negative correlation: lower attendance in exited cohort → attendance is an attrition predictor
         double attendanceCorr = clamp((avgActiveAtt - avgExitedAtt) / 100.0, -1.0, 1.0);
 
         // Mean promotions
-        double avgExitedProm = avg(exited, e -> (double) e.getPromotionCount());
-        double avgActiveProm = avg(active, e -> (double) e.getPromotionCount());
+        double avgExitedProm = avg(exited, e -> (double) e.getMonthsSincePromotion());
+        double avgActiveProm = avg(active, e -> (double) e.getMonthsSincePromotion());
         double promotionCorr = clamp(
                 avgActiveProm > 0 ? (avgActiveProm - avgExitedProm) / avgActiveProm : 0.0,
                 -1.0, 1.0);

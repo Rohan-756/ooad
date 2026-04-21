@@ -56,7 +56,7 @@ public class SegmentationService implements ISegmentationService {
                 .filter(e -> filterSpec.getMaxYearsOfService() == null ||
                              e.getYearsOfService() <= filterSpec.getMaxYearsOfService())
                 .filter(e -> filterSpec.getMinPromotions() == null ||
-                             e.getPromotionCount() >= filterSpec.getMinPromotions())
+                             e.getMonthsSincePromotion() >= filterSpec.getMinPromotions())
                 .collect(Collectors.toList());
     }
 

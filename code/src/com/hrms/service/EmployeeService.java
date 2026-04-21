@@ -15,6 +15,19 @@ import java.util.List;
  * Handles all CRUD operations and validation for Employee entities.
  * Uses the DBConnection Singleton for database access.
  *
+ * Column mapping aligned with com.hrms.db.entities.Employee (hrms-database.jar):
+ *   emp_id              → empId          (String PK)
+ *   name                → name
+ *   date_of_joining     → dateOfJoining  (was: hire_date / date_of_joining)
+ *   department          → department
+ *   attendance_rate     → attendanceRate (was: attendance_pct)
+ *   years_of_service    → yearsOfService
+ *   months_since_promotion → monthsSincePromotion (was: promotion_count)
+ *   employment_status   → employmentStatus
+ *
+ * NOTE: There is NO `termination_date` column in the DB schema.
+ *       Employee exit is tracked via the ExitInterview table (exit_date).
+ *
  * SOLID: SRP — Only manages employee-related business logic.
  * SOLID: DIP — Depends on DBConnection abstraction, not concrete drivers.
  */
@@ -35,14 +48,14 @@ public class EmployeeService {
     /**
      * Adds a new employee to the database.
      *
-     * @param employee Employee object with data filled (ID will be auto-assigned).
+     * @param employee Employee object with data filled.
      * @throws HRMSException.InvalidInputException if any required field is invalid.
+     * @return The SQLite rowid of the inserted row (integer auto-id).
      */
     public int addEmployee(Employee employee) {
         validateEmployee(employee);
 
         // emp_id is the DB team's varchar PK — generate a unique string.
-        // We use the SQLite rowid (auto-assigned) as our integer employee_id.
         String empId = "EMP_" + System.currentTimeMillis();
 
         String sql = """
@@ -55,18 +68,18 @@ public class EmployeeService {
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, empId);
             ps.setString(2, employee.getName());
-            ps.setString(3, employee.getHireDate());
+            ps.setString(3, employee.getDateOfJoining());
             ps.setString(4, employee.getDepartment());
-            ps.setDouble(5, employee.getAttendancePercentage());
+            ps.setDouble(5, employee.getAttendanceRate());
             ps.setInt(6, employee.getYearsOfService());
-            ps.setInt(7, employee.getPromotionCount());
+            ps.setInt(7, employee.getMonthsSincePromotion());
             ps.setString(8, employee.getEmploymentStatus().name());
             ps.executeUpdate();
 
             ResultSet keys = ps.getGeneratedKeys();
             if (keys.next()) {
                 int generatedId = keys.getInt(1); // SQLite rowid
-                System.out.println("[EmployeeService] Employee added with ID: " + generatedId);
+                System.out.println("[EmployeeService] Employee added with rowid: " + generatedId + ", emp_id: " + empId);
                 return generatedId;
             }
         } catch (SQLException e) {
@@ -80,26 +93,48 @@ public class EmployeeService {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Retrieves an employee by ID.
+     * Retrieves an employee by rowid (integer).
      *
-     * @param employeeId the ID to search for.
+     * @param rowId the SQLite rowid.
      * @return Employee object.
      * @throws HRMSException.InvalidEmployeeIdException if not found.
      */
-    public Employee getEmployeeById(int employeeId) {
-        // Use rowid as the stable integer PK into the DB team's employees table
-        String sql = "SELECT rowid AS employee_id, * FROM employees WHERE rowid = ?";
+    public Employee getEmployeeById(int rowId) {
+        String sql = "SELECT rowid AS row_id, * FROM employees WHERE rowid = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, employeeId);
+            ps.setInt(1, rowId);
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 return mapResultSetToEmployee(rs);
             } else {
                 throw new HRMSException.InvalidEmployeeIdException(
-                        "Employee ID " + employeeId + " not found in the system.");
+                        "Employee rowid " + rowId + " not found in the system.");
             }
         } catch (SQLException e) {
             throw new RuntimeException("DB error fetching employee: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Retrieves an employee by emp_id (String PK from DB team).
+     *
+     * @param empId the varchar emp_id.
+     * @return Employee object.
+     * @throws HRMSException.InvalidEmployeeIdException if not found.
+     */
+    public Employee getEmployeeByEmpId(String empId) {
+        String sql = "SELECT rowid AS row_id, * FROM employees WHERE emp_id = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, empId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return mapResultSetToEmployee(rs);
+            } else {
+                throw new HRMSException.InvalidEmployeeIdException(
+                        "Employee emp_id '" + empId + "' not found in the system.");
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("DB error fetching employee by emp_id: " + e.getMessage(), e);
         }
     }
 
@@ -110,7 +145,7 @@ public class EmployeeService {
         if (dummyMode) return getDummyEmployees();
 
         List<Employee> employees = new ArrayList<>();
-        String sql = "SELECT rowid AS employee_id, * FROM employees ORDER BY rowid";
+        String sql = "SELECT rowid AS row_id, * FROM employees ORDER BY rowid";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
@@ -124,14 +159,14 @@ public class EmployeeService {
 
     private List<Employee> getDummyEmployees() {
         List<Employee> list = new ArrayList<>();
-        list.add(new Employee(1, "Alice Johnson",   "2020-01-15", null,         "Engineering", 92.5, 4, 2, Employee.EmploymentStatus.ACTIVE));
-        list.add(new Employee(2, "Bob Smith",       "2021-03-10", "2023-08-15", "Sales",       60.0, 2, 0, Employee.EmploymentStatus.EXITED));
-        list.add(new Employee(3, "Charlie Davis",   "2019-06-22", null,         "Marketing",   88.0, 5, 1, Employee.EmploymentStatus.ACTIVE));
-        list.add(new Employee(4, "Diana Prince",    "2022-11-05", "2024-01-10", "Engineering", 55.0, 1, 0, Employee.EmploymentStatus.EXITED));
-        list.add(new Employee(5, "Ethan Hunt",      "2023-02-28", null,         "Operations",  98.0, 1, 1, Employee.EmploymentStatus.ACTIVE));
-        list.add(new Employee(6, "Fiona Gallagher", "2020-05-12", null,         "Sales",       75.0, 4, 0, Employee.EmploymentStatus.ACTIVE));
-        list.add(new Employee(7, "George Costanza", "2018-09-01", "2023-11-20", "HR",          40.0, 5, 0, Employee.EmploymentStatus.EXITED));
-        list.add(new Employee(8, "Hannah Abbott",   "2021-07-30", null,         "Engineering", 91.0, 3, 1, Employee.EmploymentStatus.ACTIVE));
+        list.add(new Employee(1, "Alice Johnson",   "2020-01-15", null, "Engineering", 92.5, 4, 2, Employee.EmploymentStatus.ACTIVE));
+        list.add(new Employee(2, "Bob Smith",       "2021-03-10", null, "Sales",       60.0, 2, 0, Employee.EmploymentStatus.EXITED));
+        list.add(new Employee(3, "Charlie Davis",   "2019-06-22", null, "Marketing",   88.0, 5, 1, Employee.EmploymentStatus.ACTIVE));
+        list.add(new Employee(4, "Diana Prince",    "2022-11-05", null, "Engineering", 55.0, 1, 0, Employee.EmploymentStatus.EXITED));
+        list.add(new Employee(5, "Ethan Hunt",      "2023-02-28", null, "Operations",  98.0, 1, 1, Employee.EmploymentStatus.ACTIVE));
+        list.add(new Employee(6, "Fiona Gallagher", "2020-05-12", null, "Sales",       75.0, 4, 0, Employee.EmploymentStatus.ACTIVE));
+        list.add(new Employee(7, "George Costanza", "2018-09-01", null, "HR",          40.0, 5, 0, Employee.EmploymentStatus.EXITED));
+        list.add(new Employee(8, "Hannah Abbott",   "2021-07-30", null, "Engineering", 91.0, 3, 1, Employee.EmploymentStatus.ACTIVE));
         return list;
     }
 
@@ -175,12 +210,12 @@ public class EmployeeService {
     /**
      * Updates an existing employee's information.
      *
-     * @param employee Employee object with updated data (ID must be valid).
+     * @param employee Employee object with updated data (rowid must be valid).
      * @throws HRMSException.InvalidEmployeeIdException if employee doesn't exist.
      * @throws HRMSException.InvalidInputException if data is invalid.
      */
     public void updateEmployee(Employee employee) {
-        // Verify the employee exists first
+        // Verify the employee exists first (by integer rowid for backward-compat)
         getEmployeeById(employee.getEmployeeId());
         validateEmployee(employee);
 
@@ -194,15 +229,15 @@ public class EmployeeService {
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, employee.getName());
-            ps.setString(2, employee.getHireDate());
+            ps.setString(2, employee.getDateOfJoining());
             ps.setString(3, employee.getDepartment());
-            ps.setDouble(4, employee.getAttendancePercentage());
+            ps.setDouble(4, employee.getAttendanceRate());
             ps.setInt(5, employee.getYearsOfService());
-            ps.setInt(6, employee.getPromotionCount());
+            ps.setInt(6, employee.getMonthsSincePromotion());
             ps.setString(7, employee.getEmploymentStatus().name());
             ps.setInt(8, employee.getEmployeeId());
             ps.executeUpdate();
-            System.out.println("[EmployeeService] Employee ID " + employee.getEmployeeId() + " updated.");
+            System.out.println("[EmployeeService] Employee rowid " + employee.getEmployeeId() + " updated.");
         } catch (SQLException e) {
             throw new RuntimeException("DB error updating employee: " + e.getMessage(), e);
         }
@@ -211,15 +246,15 @@ public class EmployeeService {
     /**
      * Marks an employee as EXITED (soft delete / status change).
      */
-    public void markEmployeeAsExited(int employeeId) {
+    public void markEmployeeAsExited(int rowId) {
         // Verify existence
-        getEmployeeById(employeeId);
+        getEmployeeById(rowId);
 
         String sql = "UPDATE employees SET employment_status = 'EXITED' WHERE rowid = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, employeeId);
+            ps.setInt(1, rowId);
             ps.executeUpdate();
-            System.out.println("[EmployeeService] Employee ID " + employeeId + " marked as EXITED.");
+            System.out.println("[EmployeeService] Employee rowid " + rowId + " marked as EXITED.");
         } catch (SQLException e) {
             throw new RuntimeException("DB error marking employee as exited: " + e.getMessage(), e);
         }
@@ -231,16 +266,16 @@ public class EmployeeService {
 
     /**
      * Permanently deletes an employee record.
-     * @param employeeId the ID to delete.
+     * @param rowId the SQLite rowid to delete.
      */
-    public void deleteEmployee(int employeeId) {
-        getEmployeeById(employeeId); // Existence check
+    public void deleteEmployee(int rowId) {
+        getEmployeeById(rowId); // Existence check
 
         String sql = "DELETE FROM employees WHERE rowid = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, employeeId);
+            ps.setInt(1, rowId);
             ps.executeUpdate();
-            System.out.println("[EmployeeService] Employee ID " + employeeId + " deleted.");
+            System.out.println("[EmployeeService] Employee rowid " + rowId + " deleted.");
         } catch (SQLException e) {
             throw new RuntimeException("DB error deleting employee: " + e.getMessage(), e);
         }
@@ -266,18 +301,31 @@ public class EmployeeService {
     // HELPER
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Maps a ResultSet row to an Employee model.
+     *
+     * Column names match the Hibernate entity (com.hrms.db.entities.Employee):
+     *   date_of_joining, attendance_rate, months_since_promotion, employment_status
+     */
     private Employee mapResultSetToEmployee(ResultSet rs) throws SQLException {
-        return new Employee(
-                rs.getInt("employee_id"),           // rowid alias
+        String empId = rs.getString("emp_id");
+        // Expose integer rowid via the legacy getEmployeeId() path
+        int rowId = rs.getInt("row_id");
+
+        Employee e = new Employee(
+                empId,
                 rs.getString("name"),
-                rs.getString("date_of_joining"),    // was hire_date
-                null,                               // termination_date not in hrms.db; tracked via exit_interviews
+                rs.getString("date_of_joining"),
                 rs.getString("department"),
-                rs.getDouble("attendance_rate"),    // was attendance_pct
+                rs.getDouble("attendance_rate"),
                 rs.getInt("years_of_service"),
-                rs.getInt("months_since_promotion"), // was promotion_count
+                rs.getInt("months_since_promotion"),
                 parseStatus(rs.getString("employment_status"))
         );
+        // Override legacy int id with actual rowid so getEmployeeId() works
+        // (setEmpId already set above; we additionally ensure hashcode path doesn't fire)
+        e.setEmpId("EMP_" + rowId);
+        return e;
     }
 
     /**

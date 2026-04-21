@@ -16,8 +16,8 @@ public class HighRiskStrategy implements RiskStrategy {
 
     @Override
     public RiskAssessment evaluate(Employee employee) {
-        double attendance  = employee.getAttendancePercentage();
-        int    promotions  = employee.getPromotionCount();
+        double attendance  = employee.getAttendanceRate();
+        int    promotions  = employee.getMonthsSincePromotion();
         double absenteeism = 100.0 - attendance;
 
         String reason = String.format(
