@@ -20,33 +20,20 @@ The entire application follows the MVC architectural pattern:
 - **Views**: UI components found in `com.hrms.ui` (e.g., `MainDashboard`).
 - **Controllers**: Act as intermediaries between the View and Services (e.g., `EmployeeController`, `RiskController`, `DashboardController`).
 
-### 3.2. Strategy Pattern
-Used in the Risk Evaluation subsystem to define different algorithms for assessing employee risk based on varying criteria.
-- **Interface**: `RiskStrategy` defines the `evaluate(Employee)` method.
-- **Implementations**:
-  - `LowRiskStrategy`: Applied when attendance >= 85% and promotions > 0.
-  - `MediumRiskStrategy`: Applied when attendance 65-84% or zero promotions.
-  - `HighRiskStrategy`: Applied when attendance < 65% (critically low).
-
-### 3.3. Factory Pattern
+### 3.2. Factory Pattern
 Used to instantiate the correct Strategy implementation without exposing the instantiation logic to the client.
 - **`RiskFactory`**: Contains the `getStrategy(Employee)` method which returns the appropriate `RiskStrategy` implementation based on the employee's specific attributes.
 
-### 3.4. Observer Pattern
-Implemented to build a reactive UI that automatically updates when backend data changes.
-- **`DataChangeSubject`** / **`DataChangeObserver`**: Interfaces defining the publisher-subscriber contract.
-- **`DataEventBus`**: A Singleton thread-safe central event hub. Services (like `AttritionService` or `RiskService`) notify the event bus when calculations are completed. The `DashboardController` listens to these events and triggers a Swing UI refresh callback.
-
-### 3.5. Facade Pattern
+### 3.3. Facade Pattern
 Used to simplify the interactions with multiple complex analytics services.
 - **`DashboardService`**: Aggregates calls to `SegmentationService`, `AnalyticsService`, and other sub-services to build a comprehensive `DashboardSnapshot` for the UI, hiding the underlying complexity.
 
-### 3.6. Chain of Responsibility Pattern
+### 3.4. Chain of Responsibility Pattern
 Implemented to handle validation of `Employee` objects flexibly, ensuring that validation logic is decoupled from the main `EmployeeService`.
 - **`EmployeeValidator`**: Base abstract class forming the chain.
 - **Implementations**: `BasicInfoValidator`, `MetricsValidator`, and `StatusValidator` handle specific validation responsibilities in sequence.
 
-### 3.7. Integration Interfaces
+### 3.5. Integration Interfaces
 The system provides clean contracts to integrate with third-party or external HR systems:
 - **`IHRAnalyticsReportingService`**: Interface contract for external analytics and reporting.
 - **`IPayrollService`**: Interface contract for interacting with external payroll management systems.
