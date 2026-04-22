@@ -177,7 +177,7 @@ public class EmployeeService {
         if (dummyMode) return (int) getDummyEmployees().stream()
                 .filter(e -> e.getEmploymentStatus() == Employee.EmploymentStatus.ACTIVE).count();
 
-        String sql = "SELECT COUNT(*) FROM employees WHERE employment_status = 'ACTIVE'";
+        String sql = "SELECT COUNT(*) FROM employees WHERE employment_status = 'Active'";
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(sql)) {
             if (rs.next()) return rs.getInt(1);

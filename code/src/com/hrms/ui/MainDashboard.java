@@ -884,6 +884,9 @@ public class MainDashboard extends JFrame {
         JButton calcBtn  = styledButton("⚡  Calculate Rate",  ACCENT_BLUE);
         JButton trendBtn = styledButton("📊  Generate Trend",  ACCENT_PURPLE);
 
+        calcBtn.setPreferredSize(new Dimension(140, 20));
+        trendBtn.setPreferredSize(new Dimension(140, 20));
+
         formCard.add(formRow("Start Date:",   startField));
         formCard.add(Box.createVerticalStrut(10));
         formCard.add(formRow("End Date:",     endField));
